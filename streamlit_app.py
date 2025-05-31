@@ -13,7 +13,7 @@ if "current_system_prompt" not in st.session_state:
 if "agent" not in st.session_state:
     st.session_state.agent = LumoAgent(initial_system_prompt=st.session_state.current_system_prompt)
     if not st.session_state.agent.llm:
-        st.error("Fatal Error: Language Model (LLM) could not be initialized. Please check your .env file and Google Gemini API Key.")
+        st.error("Fatal Error: Language Model (LLM) could not be initialized. Please check your Streamlit secrets configuration for the Gemini API Key.")
         st.stop()
 
 if "messages" not in st.session_state:
