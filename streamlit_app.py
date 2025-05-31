@@ -8,7 +8,9 @@ st.set_page_config(page_title="Lumo AI Playground", layout="wide", initial_sideb
 # --- Initialize Session State Variables ---
 if "conversation_id" not in st.session_state:
     st.session_state.conversation_id = str(uuid.uuid4())
-    print(f"New Streamlit session, conversation_id: {st.session_state.conversation_id}")
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logging.info(f"New Streamlit session, conversation_id: {st.session_state.conversation_id}")
 
 if "current_system_prompt" not in st.session_state:
     st.session_state.current_system_prompt = DEFAULT_AI_TOY_SYSTEM_PROMPT

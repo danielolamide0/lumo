@@ -57,7 +57,8 @@ class LumoAgent:
             return llm
         except Exception as e:
             print(f"Error initializing Google AI LLM: {e}")
-            print("Please ensure your Google Gemini API Key is setup correctly.")
+            import logging
+            logging.error("Please ensure your Google Gemini API Key is setup correctly.")
             return None
 
     def _call_toy_llm(self, state: MessagesState):
