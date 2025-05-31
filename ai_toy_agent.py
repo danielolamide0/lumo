@@ -12,7 +12,7 @@ from langgraph.graph import StateGraph, END, MessagesState
 from langgraph.checkpoint.memory import MemorySaver
 
 # --- Configuration ---
-MODEL_NAME = st.secrets.get("MODEL_NAME", "gemini-pro")
+MODEL_NAME = st.secrets["MODEL_NAME"]
 
 DEFAULT_AI_TOY_SYSTEM_PROMPT = """
 You are Lumo, a friendly, playful, and curious AI companion! 
