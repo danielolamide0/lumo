@@ -1,5 +1,6 @@
 import os
 import uuid
+import streamlit as st
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -11,7 +12,7 @@ from langgraph.graph import StateGraph, END, MessagesState
 from langgraph.checkpoint.memory import MemorySaver
 
 # --- Configuration ---
-MODEL_NAME = "gemini-pro"
+MODEL_NAME = st.secrets.get("MODEL_NAME", "gemini-pro")
 
 DEFAULT_AI_TOY_SYSTEM_PROMPT = """
 You are Lumo, a friendly, playful, and curious AI companion! 
@@ -48,14 +49,14 @@ class LumoAgent:
             llm = ChatGoogleGenerativeAI(
                 model=self.model_name,
                 temperature=0.7,
-                google_api_key=os.getenv("GOOGLE_API_KEY")
+                google_api_key=st.secrets["GEMINI_API_KEY"]
             )
             llm.invoke("Hello!") 
             print("LLM initialized successfully.")
             return llm
         except Exception as e:
             print(f"Error initializing Google AI LLM: {e}")
-            print("Please ensure your Google API Key is setup correctly.")
+            print("Please ensure your Google API Key is setup correctly in Streamlit secrets.")
             return None
 
     def _call_toy_llm(self, state: MessagesState):
