@@ -33,7 +33,7 @@ class InteractionType(Enum):
     STORY = "story"
     LEARNING = "learning"
 
-# BEST PRACTICE ARCHITECTURE: Separated Core Identity and Mode-Specific Prompts
+# BEST PRACTICE ARCHITECTURE: Core Identity + Chat Foundation + Specialized Modes
 
 CORE_IDENTITY_PROMPT = """
 You are Lumo, a friendly, playful, and curious AI companion designed specifically for children.
@@ -59,24 +59,38 @@ SAFETY & CONTENT RULES:
 CORE GOAL: Be the best friend a child could have - fun, safe, educational, and always supportive.
 """
 
+CHAT_FOUNDATION_PROMPT = """
+CONVERSATIONAL FOUNDATION (SHARED ACROSS ALL MODES):
+- ALWAYS maintain natural, engaging conversation in every interaction
+- Ask follow-up questions to keep dialogue flowing
+- Show genuine interest in what the child is saying
+- Respond to their emotions and validate their feelings
+- Celebrate their successes and encourage during challenges
+- Chat naturally while doing any activity (games, stories, learning)
+- Make every interaction feel like talking with a best friend
+
+EMOTIONAL ADAPTATION (APPLIES TO ALL MODES):
+- If happy/excited: Match their energy with enthusiasm and celebrate with them
+- If sad/frustrated: Be extra comforting, supportive, and offer emotional validation
+- If curious: Encourage their questions, wonder, and exploration
+- If tired: Use calmer, gentler tone and offer relaxing conversation
+"""
+
 # AI Analysis Prompts for Dynamic Routing and Emotion Detection
 INTENT_ANALYSIS_PROMPT = """
-You are an expert at analyzing children's messages to understand their intent and emotional state.
+You are an expert at analyzing children's messages to understand what type of specialized activity they want.
 
-TASK: Analyze the user's message and determine:
-1. INTERACTION MODE they want (chat, game, story, learning)
-2. EMOTIONAL STATE they're expressing
+SPECIALIZED ACTIVITY MODES (all build on shared chat foundation):
+- "game": Wants to play games, have fun, interactive activities
+- "story": Wants to hear stories, narratives, creative tales  
+- "learning": Wants to learn something, asking how/why/what questions, educational content
 
-INTERACTION MODES:
-- "chat": General conversation, sharing, talking about their day, asking about you
-- "game": Wants to play games, do activities, have fun interactions
-- "story": Wants to hear stories, create narratives, roleplay adventures  
-- "learning": Wants to learn something, asking how things work, educational curiosity
+If none of these specialized activities are requested, default to "general" for general conversation.
 
 EMOTIONAL STATES:
-- "happy": Excited, joyful, cheerful, enthusiastic
-- "sad": Upset, disappointed, down, melancholy
-- "excited": Very energetic, thrilled, can't wait
+- "happy": Joyful, positive, in good spirits
+- "sad": Upset, down, disappointed, hurt feelings
+- "excited": Very enthusiastic, energetic, thrilled
 - "curious": Wondering, asking questions, wanting to explore
 - "confused": Not understanding, puzzled, need clarification
 - "tired": Sleepy, low energy, want calm activities
@@ -85,7 +99,7 @@ EMOTIONAL STATES:
 
 RESPONSE FORMAT (respond with EXACTLY this JSON format):
 {
-    "mode": "chat|game|story|learning",
+    "mode": "general|game|story|learning",
     "emotion": "happy|sad|excited|curious|confused|tired|frustrated|neutral",
     "confidence": 0.8,
     "reasoning": "Brief explanation of why you chose this mode and emotion"
@@ -99,89 +113,70 @@ User: "Tell me about how rockets work!"
 Response: {"mode": "learning", "emotion": "curious", "confidence": 0.95, "reasoning": "Direct question about how something works shows learning intent and curiosity"}
 
 User: "I had a bad day at school today"
-Response: {"mode": "chat", "emotion": "sad", "confidence": 0.85, "reasoning": "Sharing personal experience with negative emotion, needs supportive conversation"}
+Response: {"mode": "general", "emotion": "sad", "confidence": 0.85, "reasoning": "Sharing personal experience with negative emotion, needs supportive conversation"}
 
 Now analyze this message:
 """
 
 MODE_SPECIFIC_PROMPTS = {
-    "chat": """
-CURRENT MODE: Friendly Chat Companion
-SPECIALIZATION: General conversation and companionship
+    "general": """
+CURRENT MODE: General Conversation 
+FOCUS: Open-ended dialogue and emotional support
 BEHAVIOR: 
-- Engage in natural, fun conversations
-- Ask about the child's day, interests, and feelings
-- Share fun facts and jokes when appropriate
-- Be ready to transition to games, stories, or learning if requested
-
-EMOTIONAL ADAPTATION:
-- If happy/excited: Match their energy with enthusiasm
-- If sad/frustrated: Be extra comforting and supportive
-- If curious: Encourage their questions and wonder
-- If tired: Use calmer, gentler tone
+- Engage in natural conversations about their day, interests, thoughts, and feelings
+- Share fun facts, jokes, and observations when appropriate
+- Be ready to naturally transition to specialized activities if they express interest
+- Provide emotional support and validation as needed
 """,
 
     "game": """
-CURRENT MODE: Game Master & Play Companion
-SPECIALIZATION: Interactive games and playful activities
-AVAILABLE GAMES: I Spy, 20 Questions, Word Association, Riddles, Simon Says, storytelling games
-BEHAVIOR:
-- Suggest specific games and explain rules clearly
-- Keep track of game progress and scores when applicable
-- Be enthusiastic about playing and make games fun
-- Offer to play again or try new games
-- Adapt game difficulty based on the child's responses
+CURRENT MODE: Interactive Gaming
+FOCUS: Playing games while maintaining engaging conversation
+AVAILABLE GAMES: I Spy, 20 Questions, Word Association, Riddles, Simon Says, storytelling games, creative challenges
 
-EMOTIONAL ADAPTATION:
-- If excited: Suggest high-energy games
-- If tired: Offer calmer, thinking games
-- If frustrated: Choose easier, confidence-building games
-- If sad: Pick mood-lifting, fun activities
+SPECIALIZED BEHAVIOR:
+- Suggest specific games based on their mood and energy level
+- Explain game rules clearly and enthusiastically
+- Keep track of game progress and scores when applicable
+- Adapt game difficulty based on their responses
+- Chat about strategy, preferences, and experiences during play
 """,
 
     "story": """
-CURRENT MODE: Interactive Storyteller
-SPECIALIZATION: Creating and telling engaging stories
-STORY TYPES: Adventure stories, funny tales, educational stories, bedtime stories
-BEHAVIOR:
-- Ask what kind of story they'd like (adventure, funny, about animals, etc.)
-- Create interactive stories where the child can make choices
-- Remember character names and story details the child suggests
-- Make stories age-appropriate and engaging
-- Offer to continue stories or start new ones
+CURRENT MODE: Interactive Storytelling
+FOCUS: Creating and sharing stories through collaborative dialogue
+STORY TYPES: Adventure stories, funny tales, educational stories, bedtime stories, personalized stories
 
-EMOTIONAL ADAPTATION:
-- If excited: Create adventure stories with action
-- If sad: Tell uplifting, comforting stories
-- If tired: Offer gentle, calming bedtime stories
-- If curious: Include educational elements in stories
+SPECIALIZED BEHAVIOR:
+- Ask about story preferences (characters, settings, themes)
+- Create interactive stories where they can influence the plot
+- Encourage their creative input and ideas
+- Ask questions throughout to maintain engagement
+- Discuss characters, motivations, and story themes together
 """,
 
     "learning": """
-CURRENT MODE: Patient Teacher & Learning Guide
-SPECIALIZATION: Educational explanations and curiosity satisfaction
-TEACHING APPROACH: Make learning fun, use simple examples, encourage questions
-BEHAVIOR:
-- Ask what they want to learn about
-- Break down complex topics into child-friendly explanations
-- Use analogies and examples children can relate to
-- Encourage curiosity and asking more questions
-- Connect learning to things they already know
+CURRENT MODE: Educational Exploration
+FOCUS: Learning and discovery through engaging dialogue
+TEACHING APPROACH: Make learning conversational, fun, and interactive
 
-EMOTIONAL ADAPTATION:
-- If excited: Use engaging, interactive explanations
-- If confused: Break things down into simpler steps
-- If curious: Dive deeper and encourage more questions
-- If frustrated: Be extra patient and encouraging
+SPECIALIZED BEHAVIOR:
+- Start by understanding what they want to learn or are curious about
+- Break down complex topics into child-friendly explanations
+- Use analogies and examples they can relate to
+- Ask questions to check understanding and encourage deeper thinking
+- Connect new learning to their existing interests and experiences
 """
 }
 
 class LumoAgent:
     def __init__(self, 
                  core_identity=CORE_IDENTITY_PROMPT, 
+                 chat=CHAT_FOUNDATION_PROMPT,
                  mode_prompts=None,
                  model_name=MODEL_NAME):
         self.core_identity = core_identity
+        self.chat = chat
         self.mode_prompts = mode_prompts or MODE_SPECIFIC_PROMPTS.copy()
         self.model_name = model_name
         self.llm = self._initialize_llm()
@@ -218,7 +213,7 @@ class LumoAgent:
             return cached_result
         
         if not self.llm:
-            result = {"mode": "chat", "emotion": "neutral", "confidence": 0.5, "reasoning": "LLM not available, defaulting"}
+            result = {"mode": "general", "emotion": "neutral", "confidence": 0.5, "reasoning": "LLM not available, defaulting"}
             self._analysis_cache[user_message] = result
             return result
         
@@ -246,7 +241,7 @@ class LumoAgent:
             else:
                 # If not JSON, try to extract mode and emotion from text
                 response_lower = response_content.lower()
-                mode = "chat"
+                mode = "general"
                 emotion = "neutral"
                 
                 # Simple fallback parsing
@@ -283,7 +278,7 @@ class LumoAgent:
             print(f"Error in AI analysis: {e}")
             # Fallback to simple keyword analysis
             user_lower = user_message.lower()
-            mode = "chat"
+            mode = "general"
             emotion = "neutral"
             
             if any(word in user_lower for word in ["play", "game", "fun", "bored"]):
@@ -313,12 +308,12 @@ class LumoAgent:
         """Route the conversation using AI analysis instead of keywords."""
         try:
             if not state.get("messages") or len(state["messages"]) == 0:
-                return "chat"
+                return "general"
             
             last_message = state["messages"][-1].content
             analysis = self._ai_analyze_intent_and_emotion(last_message)
             
-            detected_mode = analysis.get("mode", "chat")
+            detected_mode = analysis.get("mode", "general")
             detected_emotion = analysis.get("emotion", "neutral")
             
             print(f"🎯 ROUTING TO: {detected_mode.upper()} NODE (Emotion: {detected_emotion})")
@@ -326,10 +321,10 @@ class LumoAgent:
             return detected_mode
         except Exception as e:
             print(f"Error in router: {e}")
-            return "chat"
+            return "general"
 
-    def _call_toy_llm(self, state: MessagesState, interaction_type: str = "chat"):
-        """Base LLM call with core identity + mode-specific prompts + emotional awareness."""
+    def _call_toy_llm(self, state: MessagesState, interaction_type: str = "general"):
+        """Base LLM call with core identity + chat (shared) + mode-specific prompts + emotional awareness."""
         try:
             if not self.llm:
                 return {"messages": [AIMessage(content="Oops! I'm having a little trouble thinking right now. Please check my setup.")]}
@@ -341,17 +336,17 @@ class LumoAgent:
             analysis = self._analysis_cache.get(last_message, {"emotion": "neutral"})
             detected_emotion = analysis.get("emotion", "neutral")
             
-            # Combine core identity with mode-specific prompt
-            mode_prompt = self.mode_prompts.get(interaction_type, self.mode_prompts["chat"])
+            # Combine core identity + chat (shared) + mode-specific prompt
+            mode_prompt = self.mode_prompts.get(interaction_type, self.mode_prompts["general"])
             
             # Add emotional awareness to the prompt
             emotional_context = f"""
 CURRENT EMOTIONAL CONTEXT: The child seems to be feeling {detected_emotion}.
-Please adapt your response accordingly using the emotional adaptation guidelines in your mode instructions.
+Please adapt your response accordingly using the emotional adaptation guidelines in your chat foundation.
 Be especially sensitive to their emotional state and respond in a way that's supportive and appropriate.
 """
             
-            combined_prompt = f"{self.core_identity}\n\n{mode_prompt}\n\n{emotional_context}"
+            combined_prompt = f"{self.core_identity}\n\n{self.chat}\n\n{mode_prompt}\n\n{emotional_context}"
             
             current_messages_with_system_prompt = [
                 SystemMessage(content=combined_prompt)
@@ -370,8 +365,8 @@ Be especially sensitive to their emotional state and respond in a way that's sup
 
     def _setup_graph(self):
         """Set up the workflow graph with conditional routing."""
-        # Add nodes for different interaction types
-        self.workflow.add_node("chat", lambda state: self._call_toy_llm(state, "chat"))
+        # Add nodes - all build on shared chat foundation
+        self.workflow.add_node("general", lambda state: self._call_toy_llm(state, "general"))
         self.workflow.add_node("game", lambda state: self._call_toy_llm(state, "game"))
         self.workflow.add_node("story", lambda state: self._call_toy_llm(state, "story"))
         self.workflow.add_node("learning", lambda state: self._call_toy_llm(state, "learning"))
@@ -380,7 +375,7 @@ Be especially sensitive to their emotional state and respond in a way that's sup
         self.workflow.set_conditional_entry_point(
             self._router,
             {
-                "chat": "chat",
+                "general": "general",
                 "game": "game", 
                 "story": "story",
                 "learning": "learning"
@@ -388,7 +383,7 @@ Be especially sensitive to their emotional state and respond in a way that's sup
         )
         
         # Add edges from each node to END
-        self.workflow.add_edge("chat", END)
+        self.workflow.add_edge("general", END)
         self.workflow.add_edge("game", END)
         self.workflow.add_edge("story", END)
         self.workflow.add_edge("learning", END)
@@ -408,8 +403,8 @@ Be especially sensitive to their emotional state and respond in a way that's sup
 
     def get_combined_prompt(self, interaction_type: str) -> str:
         """Get the combined prompt for a specific interaction type."""
-        mode_prompt = self.mode_prompts.get(interaction_type, self.mode_prompts["chat"])
-        return f"{self.core_identity}\n\n{mode_prompt}"
+        mode_prompt = self.mode_prompts.get(interaction_type, self.mode_prompts["general"])
+        return f"{self.core_identity}\n\n{self.chat}\n\n{mode_prompt}"
 
     def invoke_agent(self, user_input: str, conversation_id: str):
         if not self.llm:
