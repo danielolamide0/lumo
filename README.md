@@ -222,9 +222,6 @@ This project is open source and available under the MIT License.
 
 - [ ] Add more game types with state persistence
 - [ ] Implement story branching with memory
-- [ ] Add voice interaction capabilities
-- [ ] Create parent dashboard for monitoring
-- [ ] Add multilingual support
 - [ ] Implement learning progress tracking
 
 ---
