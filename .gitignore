@@ -25,4 +25,11 @@
 *.synctex.gz
 *.synctex
 __pycache__/
-*.pyc 
+*.pyc
+
+# Streamlit secrets (contains API keys and sensitive data)
+.streamlit/secrets.toml
+
+# Debug files
+debug_*.py
+check_atlas_data.py 

@@ -1,266 +1,220 @@
-# Lumo AI Toy - Enhanced Interactive AI Companion
+# 🧸 Lumo AI - Advanced AI Companion for Children
 
-This project implements "Lumo," an advanced AI companion designed specifically for children. Lumo uses Google's Gemini AI with sophisticated routing, emotional intelligence, and adaptive responses to create engaging, safe, and educational interactions.
+Lumo is a sophisticated, memory-enabled AI companion designed specifically for children. Built with Google's Gemini AI, LangGraph workflow orchestration, and persistent MongoDB storage, Lumo provides a safe, engaging, and educational chat experience that remembers every conversation.
 
-## 🌟 Key Features
+## ✨ Key Features
 
-### **AI-Powered Intelligence**
-- **Dynamic Intent Detection:** Uses Gemini AI to intelligently analyze user messages and determine interaction type
-- **Emotional Intelligence:** Detects emotions (happy, sad, excited, curious, confused, tired, frustrated, neutral) and adapts responses accordingly
-- **Smart Routing:** No keyword matching - pure AI analysis for natural conversation flow
+### 🧠 **Advanced AI Architecture**
+- **Core Identity + Chat Foundation + Specialized Modes** - Modular prompt architecture
+- **Dynamic Intent Detection** - AI-powered routing to Game, Story, Learning, or General modes
+- **Emotional Intelligence** - Adapts responses based on detected emotional state
+- **Natural Memory Usage** - References past conversations naturally without explicit "I remember" statements
 
-### **Conversational Foundation Architecture**
-- **Core Identity:** Shared personality, safety rules, and communication style
-- **Chat Foundation:** Conversational abilities shared across ALL modes (not a separate mode)
-- **Specialized Modes:** Game, Story, and Learning activities that build on the shared chat foundation
-- **Every Interaction:** Core Identity + Chat + Specialization = Perfect AI Companion
+### 💾 **Persistent Memory System**
+- **MongoDB Atlas Integration** - All conversations stored in cloud database
+- **User-Centric Storage** - Each user gets their own profile and conversation history
+- **Cross-Session Continuity** - Pick up conversations exactly where you left off
+- **Real-time Chat Loading** - Previous conversations appear instantly on login
 
-### **Specialized Activities**
-- **Game Mode:** Interactive games (I Spy, 20 Questions, Word Association, Riddles) with natural conversation
-- **Story Mode:** Dynamic storytelling with user choices through collaborative dialogue
-- **Learning Mode:** Educational explanations through engaging conversation
-- **General Mode:** Open-ended supportive conversation when no specific activity is requested
+### 👤 **User Management**
+- **Username-Based Authentication** - Simple login system for children
+- **Individual User Profiles** - Separate conversation histories for each user
+- **User Dashboard** - Shows total chats, storage status, and member since date
+- **Session Management** - Login/logout functionality with state persistence
 
-### **Revolutionary Design Principle**
-**No separate "chat mode"** - conversation IS the foundation! Every mode is inherently conversational plus specialized:
-- Want to play games? → Conversational gaming
-- Want to learn? → Educational conversation
-- Want stories? → Storytelling conversation
-- Just want to chat? → Supportive conversation
+### 🎭 **Specialized Interaction Modes**
+- **General Chat** - Open-ended dialogue and emotional support
+- **Game Mode** - Interactive games (I Spy, 20 Questions, Word Association, etc.)
+- **Story Mode** - Collaborative storytelling and creative narratives
+- **Learning Mode** - Educational exploration with child-friendly explanations
 
-### **Advanced Technical Features**
-- **LangGraph Workflow:** Parallel processing with conditional routing for optimal performance
-- **Comprehensive Fallback System:** Three-layer fallback (AI Analysis → Text Parsing → Keyword Matching)
-- **Analysis Caching:** Optimized performance with intelligent caching to avoid duplicate AI calls
-- **Error Handling:** Robust error recovery ensures system always responds gracefully
+### 🛡️ **Safety & Child-Friendly Design**
+- Age-appropriate language and content filtering
+- Emotional validation and supportive responses
+- Comprehensive error handling with child-friendly messages
+- Safe conversation boundaries and guidelines
 
-### **Enhanced User Interface**
-- **Multi-Tab Configuration:** Core Identity + Chat Foundation + Specialized Mode editors
-- **Real-Time Preview:** View combined prompts before applying changes
-- **Prompt Statistics:** Monitor character counts and system performance
-- **Interactive Testing:** Built-in examples and testing guidance
+## 🏗️ **Technical Architecture**
 
-## 🏗️ Project Architecture
-
-```
-User Input
-    ↓
-┌─────────────────────────────────────┐
-│           LangGraph                 │
-│  ┌─────────────────────────────────┐│
-│  │ 1. AI Analysis (Intent+Emotion) ││  ← Gemini AI
-│  │ 2. Conditional Router           ││  ← Routes to specialized modes
-│  │ 3. Mode-Specific Node           ││  ← Game/Story/Learning/General
-│  │ 4. Emotional Adaptation         ││  ← Adapts to detected emotion
-│  │ 5. Combined Response            ││  ← Core+Chat+Specialization
-│  │ 6. Memory Persistence           ││  ← LangGraph conversation memory
-│  └─────────────────────────────────┘│
-└─────────────────────────────────────┘
-    ↓
-Conversational + Specialized Response
-```
-
-### **Foundational Architecture**
-```
-Every Response = Core Identity + Chat Foundation + Specialized Mode + Emotional Context
-```
-
-Example:
-- **Core Identity:** "You are Lumo, friendly and safe..."
-- **Chat Foundation:** "Always maintain engaging conversation..."
-- **Game Mode:** "Focus on interactive games while chatting..."
-- **Emotional Context:** "The child seems excited, match their energy..."
-- **Result:** An enthusiastic gaming conversation perfect for an excited child
-
-## 📁 Project Structure
-
+### **Core Components**
 ```
 /lumo/
-├── .env                 # Environment variables (GOOGLE_API_KEY, MODEL_NAME)
-├── .venv/               # Virtual environment (recommended)
-├── ai_toy_agent.py      # Enhanced AI agent with shared chat foundation
-├── streamlit_app.py     # Multi-tab configuration interface
-├── requirements.txt     # Python dependencies
-├── .gitignore           # Git ignore file (excludes .env for security)
-└── README.md           # This file
+├── .streamlit/
+│   └── secrets.toml          # Streamlit configuration (NOT in git)
+├── ai_toy_agent.py          # Main AI agent with MongoDB integration
+├── streamlit_app.py         # User interface and authentication
+├── requirements.txt         # Python dependencies
+├── .gitignore              # Protects sensitive files
+└── README.md               # This documentation
 ```
 
-## 🚀 Setup and Installation
+### **Technology Stack**
+- **AI Model**: Google Gemini 2.5 Flash Preview
+- **Framework**: LangGraph for conversation workflows
+- **Database**: MongoDB Atlas for persistent storage
+- **Interface**: Streamlit for web-based chat
+- **Memory**: User-centric conversation persistence
+- **Routing**: AI-powered intent and emotion detection
 
-### 1. Prerequisites
+### **Database Structure**
+```javascript
+// MongoDB Atlas - LUMO Database - users Collection
+{
+  "_id": "username",
+  "username": "username",
+  "email": "username@example.com",
+  "created_at": "2024-01-15T...",
+  "chats": [
+    {
+      "user_input": "Hello!",
+      "ai_response": "Hi there! How are you?",
+      "timestamp": "2024-01-15T..."
+    }
+  ],
+  "profile": {},
+  "summaries": []
+}
+```
 
-- Python 3.8 or higher
-- Google Gemini API Key ([Get one here](https://makersuite.google.com/app/apikey))
+## 🚀 **Setup and Installation**
 
-### 2. Clone the Repository
+### **Prerequisites**
+- Python 3.8+
+- Google Gemini API Key
+- MongoDB Atlas Account
 
+### **1. Clone Repository**
 ```bash
 git clone https://github.com/danielolamide0/lumo.git
 cd lumo
+git checkout memorymongodb
 ```
 
-### 3. Set Up Environment Variables
-
-Create a `.env` file in the root directory:
-
-```env
-GOOGLE_API_KEY=your-gemini-api-key-here
-MODEL_NAME=gemini-1.5-flash
-```
-
-### 4. Create Virtual Environment
-
+### **2. Environment Setup**
 ```bash
+# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-### 5. Install Dependencies
-
-```bash
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-## 🎮 Running Lumo
+### **3. Configuration**
+Create `.streamlit/secrets.toml`:
+```toml
+MONGODB_URI = "your_mongodb_atlas_connection_string"
+GEMINI_API_KEY = "your_google_gemini_api_key"
+MODEL_NAME = "gemini-2.5-flash-preview-04-17"
+```
 
-### Web Interface (Recommended)
+### **4. MongoDB Atlas Setup**
+1. Create MongoDB Atlas account
+2. Create cluster and database named `LUMO`
+3. Create collection named `users`
+4. Get connection string and add to secrets.toml
 
+## 🎮 **Running Lumo**
+
+### **Web Interface (Recommended)**
 ```bash
 streamlit run streamlit_app.py
 ```
+Navigate to `http://localhost:8501`
 
-Open your browser to the displayed URL (typically http://localhost:8501)
-
-### Command Line Interface
-
+### **Command Line Interface**
 ```bash
 python ai_toy_agent.py
 ```
 
-## 🔧 Configuration & Customization
+## 🎯 **Usage**
 
-### **Multi-Tab Interface**
-1. **Core Identity Tab:** Edit Lumo's fundamental personality and safety rules
-2. **Chat Foundation Tab:** Configure conversational abilities shared across ALL modes
-3. **Game Mode Tab:** Customize gaming specialization (builds on chat foundation)
-4. **Story Mode Tab:** Set up storytelling specialization (builds on chat foundation)
-5. **Learning Mode Tab:** Define educational specialization (builds on chat foundation)
-6. **View Combined Tab:** Preview how Core + Chat + Specialization combine for each mode
+1. **Login**: Enter your username to create/access your profile
+2. **Chat**: Start conversing with Lumo naturally
+3. **Modes**: Lumo automatically detects when you want to:
+   - Play games ("Let's play something!")
+   - Hear stories ("Tell me a story!")
+   - Learn something ("How do rockets work?")
+   - Just chat ("How was your day?")
+4. **Memory**: Lumo remembers everything across sessions
+5. **Logout**: Use the logout button to switch users
 
-### **Testing the Architecture**
-- **"I'm bored!"** → Game Mode (Conversational gaming)
-- **"Tell me about space"** → Learning Mode (Educational conversation)
-- **"I'm sad"** → General Mode (Supportive conversation)
-- **"Story about dragons"** → Story Mode (Storytelling conversation)
+## ⚙️ **Customization**
 
-**Notice:** Every response is conversational + specialized!
+### **Prompt Engineering**
+Use the built-in configuration interface to customize:
+- **Core Identity**: Lumo's fundamental personality
+- **Chat Foundation**: Shared conversational abilities
+- **Mode Specializations**: Behavior for each interaction mode
 
-## 🧠 AI Analysis System
+### **Architecture Preview**
+View how Core Identity + Chat + Specialized Mode prompts combine for different interaction types.
 
-### **Intent Detection**
-The system analyzes user messages to determine specialized activity:
-- **Game:** Wanting to play games, interactive activities
-- **Story:** Requesting narratives, creative tales
-- **Learning:** Asking how things work, educational content
-- **General:** No specific activity - defaults to supportive conversation
+## 🔧 **Advanced Features**
 
-### **Emotion Detection**
-Lumo recognizes and adapts to:
-- **Happy/Excited:** Matches energy with enthusiasm
-- **Sad/Frustrated:** Provides extra comfort and support
-- **Curious:** Encourages questions and exploration
-- **Tired:** Uses calmer, gentler responses
-- **Confused:** Breaks things down simply
-- **Neutral:** Standard friendly interaction
+### **Memory System**
+- **Natural Referencing**: Uses conversation history seamlessly
+- **Cross-Session Persistence**: MongoDB Atlas storage
+- **User-Specific**: Separate memories for each user
+- **Real-time Updates**: Conversations saved instantly
 
-### **Fallback System**
-1. **Primary:** AI analysis using Gemini for intent and emotion
-2. **Secondary:** Text parsing if AI doesn't return JSON
-3. **Tertiary:** Keyword matching if API fails
-4. **Always responds** gracefully regardless of analysis success
+### **AI Routing**
+- **Intent Detection**: Game/Story/Learning/General classification
+- **Emotion Recognition**: Happy/Sad/Excited/Curious/etc.
+- **Dynamic Adaptation**: Emotional context influences responses
+- **Fallback Systems**: Multiple layers of error handling
 
-## 🛡️ Safety & Security
+### **Error Handling**
+- **Child-Friendly Messages**: Age-appropriate error responses
+- **Connection Resilience**: Handles network/database issues
+- **API Quotas**: Graceful handling of rate limits
+- **Authentication**: Secure API key management
 
-- **Child-Safe Design:** All responses filtered for age-appropriate content
-- **No Personal Information:** Never requests personal details
-- **Positive Reinforcement:** Always encouraging and supportive
-- **Emotional Support:** Recognizes distress and guides to adult help
-- **Secure API Keys:** Environment variables prevent accidental exposure
+## 📊 **Monitoring & Debugging**
 
-## 🔄 Technical Features
+The system provides comprehensive logging:
+- User creation and authentication
+- Chat message storage and retrieval
+- AI routing decisions and confidence levels
+- MongoDB connection status
+- Error tracking and fallback usage
 
-### **LangGraph Integration**
-- **Conditional Routing:** Intelligent flow control based on AI analysis
-- **State Management:** Conversation memory with thread-based persistence
-- **Parallel Processing:** Efficient workflow execution
-- **Error Recovery:** Graceful handling of API failures
+## 🛡️ **Security**
 
-### **Performance Optimization**
-- **Analysis Caching:** Avoids duplicate AI calls for same message
-- **Efficient Prompting:** Combines prompts optimally to reduce token usage
-- **Fallback Layers:** Ensures fast response even if primary analysis fails
+- **API Key Protection**: Stored in secrets.toml (not in git)
+- **MongoDB Credentials**: Secured in configuration
+- **Child Safety**: Content filtering and appropriate responses
+- **Session Management**: Secure user state handling
 
-## 🚀 Deployment Options
+## 🚀 **Deployment**
 
-### **Local Development**
-- Use `.env` file for API keys
-- Run with `streamlit run streamlit_app.py`
+For production deployment:
+1. Set up Streamlit Cloud or similar service
+2. Configure secrets in deployment environment
+3. Ensure MongoDB Atlas is accessible
+4. Set up monitoring and alerts
 
-### **Streamlit Cloud**
-- Set API keys in Streamlit Secrets
-- Deploy directly from GitHub repository
-
-### **Docker Deployment**
-```dockerfile
-FROM python:3.9-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-CMD ["streamlit", "run", "streamlit_app.py"]
-```
-
-## 📊 Architecture Benefits
-
-### **Why This Design Works**
-1. **No Mode Confusion:** Chat isn't a separate mode - it's the foundation
-2. **Consistent Experience:** Every interaction feels natural and conversational
-3. **Specialized Intelligence:** Each mode adds focused capabilities on top of chat
-4. **Emotional Continuity:** Emotional adaptation works across all modes
-5. **Scalable Design:** Easy to add new specialized modes while maintaining chat foundation
-
-### **Performance Metrics**
-- **Response Time:** < 2 seconds average with caching
-- **Fallback Success:** 100% (always responds even if AI analysis fails)
-- **Emotional Detection:** 85%+ accuracy with AI analysis, 60%+ with fallback
-- **Mode Routing:** 90%+ accuracy for clear intent, graceful fallback for ambiguous
-
-## 🤝 Contributing
+## 🤝 **Contributing**
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
 
-## 📝 License
+## 📝 **License**
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is open source and available under the MIT License.
 
-## 🙏 Acknowledgments
+## 🙏 **Acknowledgments**
 
-- Google Gemini AI for powerful language understanding
-- LangGraph for robust workflow management
-- Streamlit for intuitive web interface
-- The open-source community for inspiration and tools
-
-## 📞 Support
-
-If you encounter any issues or have questions:
-- Open an issue on GitHub
-- Check the troubleshooting section in the wiki
-- Review the configuration examples
+- Google Gemini AI for the powerful language model
+- LangGraph for conversation workflow orchestration
+- MongoDB Atlas for reliable cloud database
+- Streamlit for the intuitive web interface
 
 ---
 
-**Built with ❤️ for children's education and safe AI interaction**
+**Created by [@danielolamide0](https://github.com/danielolamide0)**  
+**Last Updated**: January 2024  
+**Version**: MongoDB Memory Integration
