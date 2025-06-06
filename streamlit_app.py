@@ -127,7 +127,6 @@ if not st.session_state.authenticated:
     with col2:
         st.markdown("---")
         st.subheader("👤 Enter Your Username")
-        st.markdown("*Lumo will remember our conversations and get to know you better!*")
         
         with st.form("login_form"):
             username_input = st.text_input(
@@ -144,8 +143,6 @@ if not st.session_state.authenticated:
                     st.rerun()
         
         st.markdown("---")
-        st.info("📱 **New user?** Just enter any username and Lumo will create your profile!")
-        st.info("🔄 **Returning user?** Enter your username to continue where you left off!")
 
 # 🏠 Main Application (After Authentication)
 else:
@@ -167,16 +164,6 @@ else:
             st.session_state.user_info = None
             st.session_state.messages = []
             st.rerun()
-
-    # Storage status indicator
-    if st.session_state.user_info:
-        storage_type = st.session_state.user_info.get('storage_type', 'Unknown')
-        is_persistent = st.session_state.user_info.get('persistent', False)
-        
-        if is_persistent:
-            st.success(f"✅ Connected to {storage_type} - Your conversations are saved!")
-        else:
-            st.warning(f"⚠️ Using {storage_type} - Conversations won't persist after session")
 
     # Enhanced Configuration Section
     with st.expander("⚙️ Configure Lumo's Architecture (Core + Chat + Specialized Modes)", expanded=False):
@@ -350,6 +337,3 @@ else:
             created_at = st.session_state.user_info.get('created_at')
             if created_at:
                 st.write(f"**Member Since:** {created_at.strftime('%Y-%m-%d') if hasattr(created_at, 'strftime') else str(created_at)}")
-        
-        st.markdown("---")
-        st.info("💡 **Tip:** Lumo remembers everything you tell it and will reference previous conversations!")
