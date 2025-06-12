@@ -28,9 +28,18 @@ except ImportError:
     MongoDBSaver = None
     MONGODB_CHECKPOINTER_AVAILABLE = False
 
-# Enhanced Memory System Imports - with fallback for deployment environments
+# Enhanced Memory System Imports - with SQLite compatibility fix for deployment
 VECTOR_MEMORY_AVAILABLE = False
 try:
+    # Fix SQLite version issue for ChromaDB in cloud deployment
+    import sys
+    try:
+        __import__('pysqlite3')
+        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+        print("🔧 Using pysqlite3-binary for ChromaDB compatibility")
+    except ImportError:
+        print("📝 Using system SQLite (local development)")
+    
     import chromadb
     from langchain_chroma import Chroma
     from langchain_huggingface import HuggingFaceEmbeddings

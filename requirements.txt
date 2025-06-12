@@ -6,5 +6,9 @@ google-generativeai
 python-dotenv
 streamlit
 pymongo
+pysqlite3-binary
 chromadb
 sentence-transformers
+langchain-chroma
+langchain-huggingface
+langgraph-checkpoint-mongodb
