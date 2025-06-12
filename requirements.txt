@@ -8,6 +8,7 @@ streamlit
 pymongo
 pysqlite3-binary
 chromadb
+sentence-transformers
 langchain-chroma
-langchain-community
+langchain-huggingface
 langgraph-checkpoint-mongodb
