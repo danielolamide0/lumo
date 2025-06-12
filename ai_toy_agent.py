@@ -61,7 +61,8 @@ try:
     if not GEMINI_API_KEY:
         try:
             import streamlit as st
-            GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+            # Try both possible API key names
+            GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or st.secrets.get("GOOGLE_API_KEY")
             MODEL_NAME = st.secrets.get("MODEL_NAME", "gemini-2.5-flash-preview-04-17")
             MONGODB_URI = st.secrets.get("MONGODB_URI")
             DATABASE_NAME = st.secrets.get("DATABASE_NAME", "LUMO")
