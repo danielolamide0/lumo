@@ -40,10 +40,12 @@ try:
     except ImportError:
         print("📝 Using system SQLite (local development)")
     
+    # ChromaDB imports - optional for enhanced memory
     import chromadb
     from langchain_chroma import Chroma
-    from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_core.documents import Document
+    # Skip HuggingFace embeddings to avoid PyTorch conflicts
+    print("📝 ChromaDB available but using simple embeddings for cloud compatibility")
     VECTOR_MEMORY_AVAILABLE = True
     print("✅ Vector memory system (ChromaDB) loaded successfully")
 except Exception as e:
@@ -405,23 +407,43 @@ class VectorMemoryManager:
             return
             
         try:
-            embeddings = HuggingFaceEmbeddings(
-                model_name="all-MiniLM-L6-v2",
-                model_kwargs={'device': 'cpu'},
-                encode_kwargs={'normalize_embeddings': True}
-            )
+            # Use simple embeddings to avoid PyTorch conflicts
+            embeddings = self._create_simple_embeddings()
             
             self.vector_store = Chroma(
                 collection_name=self.collection_name,
                 embedding_function=embeddings,
                 persist_directory="./chroma_lumo_timeline"
             )
-            print("🧠 Vector memory initialized for timeline summaries only")
+            print("🧠 Vector memory initialized with simple embeddings (cloud-compatible)")
             
         except Exception as e:
             print(f"⚠️ Vector memory initialization failed: {e}")
             self.vector_store = None
             self.available = False
+    
+    def _create_simple_embeddings(self):
+        """Create simple hash-based embeddings to avoid PyTorch dependencies."""
+        class SimpleEmbeddings:
+            def embed_documents(self, texts):
+                import hashlib
+                embeddings = []
+                for text in texts:
+                    # Create a simple 384-dimensional vector from text hash
+                    hash_obj = hashlib.md5(text.encode())
+                    hash_hex = hash_obj.hexdigest()
+                    # Convert hex to numbers and normalize
+                    embedding = [int(hash_hex[i:i+2], 16) / 255.0 for i in range(0, min(len(hash_hex), 32), 2)]
+                    # Pad to 384 dimensions
+                    while len(embedding) < 384:
+                        embedding.extend(embedding[:min(384-len(embedding), len(embedding))])
+                    embeddings.append(embedding[:384])
+                return embeddings
+            
+            def embed_query(self, text):
+                return self.embed_documents([text])[0]
+        
+        return SimpleEmbeddings()
     
     def store_timeline_memory(self, username: str, timeline: Dict[str, Any]):
         """Store timeline memory in vector database or fallback storage."""
