@@ -1,0 +1,10 @@
+langchain-core==0.3.59
+langsmith==0.3.42
+langgraph==0.4.3
+langchain-google-genai
+google-generativeai
+python-dotenv
+streamlit
+pymongo
+chromadb
+sentence-transformers
