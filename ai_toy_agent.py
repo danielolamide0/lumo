@@ -28,11 +28,19 @@ except ImportError:
     MongoDBSaver = None
     MONGODB_CHECKPOINTER_AVAILABLE = False
 
-# Enhanced Memory System Imports
-import chromadb
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_core.documents import Document
+# Enhanced Memory System Imports - with fallback for deployment environments
+VECTOR_MEMORY_AVAILABLE = False
+try:
+    import chromadb
+    from langchain_chroma import Chroma
+    from langchain_huggingface import HuggingFaceEmbeddings
+    from langchain_core.documents import Document
+    VECTOR_MEMORY_AVAILABLE = True
+    print("✅ Vector memory system (ChromaDB) loaded successfully")
+except Exception as e:
+    print(f"⚠️ Vector memory system not available: {e}")
+    print("📝 Will use fallback memory system (MongoDB-only)")
+    VECTOR_MEMORY_AVAILABLE = False
 
 # --- Configuration ---
 # Set defaults first
@@ -359,15 +367,24 @@ class LumoState(TypedDict):
     last_updated: str
 
 class VectorMemoryManager:
-    """Manages ChromaDB vector memory for timeline summaries only."""
+    """Manages ChromaDB vector memory for timeline summaries only - with fallback for deployment environments."""
     
     def __init__(self, collection_name: str = "lumo_timeline_memory"):
         self.collection_name = collection_name
         self.vector_store = None
-        self._initialize_vector_store()
+        self.fallback_memory = {}  # In-memory fallback when ChromaDB unavailable
+        self.available = VECTOR_MEMORY_AVAILABLE
+        
+        if self.available:
+            self._initialize_vector_store()
+        else:
+            print("📝 Using fallback in-memory vector storage")
     
     def _initialize_vector_store(self):
         """Initialize ChromaDB vector store."""
+        if not VECTOR_MEMORY_AVAILABLE:
+            return
+            
         try:
             embeddings = HuggingFaceEmbeddings(
                 model_name="all-MiniLM-L6-v2",
@@ -385,64 +402,93 @@ class VectorMemoryManager:
         except Exception as e:
             print(f"⚠️ Vector memory initialization failed: {e}")
             self.vector_store = None
+            self.available = False
     
     def store_timeline_memory(self, username: str, timeline: Dict[str, Any]):
-        """Store timeline memory in vector database."""
-        if not self.vector_store:
-            return
-            
-        try:
-            document = Document(
-                page_content=timeline.get('story', ''),
-                metadata={
-                    "username": username,
-                    "type": "timeline_memory",
-                    "timestamp": timeline.get('updated_at', datetime.utcnow().isoformat()),
-                    "interactions": timeline.get('total_interactions', 0)
-                }
-            )
-            self.vector_store.add_documents([document])
-            print(f"📚 Stored timeline memory in vector DB for {username}")
-        except Exception as e:
-            print(f"⚠️ Error storing timeline in vector DB: {e}")
+        """Store timeline memory in vector database or fallback storage."""
+        if self.available and self.vector_store:
+            try:
+                document = Document(
+                    page_content=timeline.get('story', ''),
+                    metadata={
+                        "username": username,
+                        "type": "timeline_memory",
+                        "timestamp": timeline.get('updated_at', datetime.utcnow().isoformat()),
+                        "interactions": timeline.get('total_interactions', 0)
+                    }
+                )
+                self.vector_store.add_documents([document])
+                print(f"📚 Stored timeline memory in vector DB for {username}")
+            except Exception as e:
+                print(f"⚠️ Error storing timeline in vector DB: {e}")
+                self._store_in_fallback(username, timeline)
+        else:
+            self._store_in_fallback(username, timeline)
+    
+    def _store_in_fallback(self, username: str, timeline: Dict[str, Any]):
+        """Store timeline in fallback in-memory storage."""
+        if username not in self.fallback_memory:
+            self.fallback_memory[username] = []
+        
+        self.fallback_memory[username].append({
+            "content": timeline.get('story', ''),
+            "timestamp": timeline.get('updated_at', datetime.utcnow().isoformat()),
+            "interactions": timeline.get('total_interactions', 0)
+        })
+        print(f"📝 Stored timeline memory in fallback storage for {username}")
     
     def retrieve_relevant_memories(self, username: str, query: str, k: int = 3) -> List[str]:
         """Retrieve relevant timeline memories for a user."""
-        if not self.vector_store:
+        if self.available and self.vector_store:
+            try:
+                docs = self.vector_store.similarity_search(
+                    query,
+                    k=k,
+                    filter={"$and": [{"username": username}, {"type": "timeline_memory"}]}
+                )
+                
+                memories = []
+                for doc in docs:
+                    content = doc.page_content
+                    memories.append(f"[TIMELINE]: {content}")
+                
+                return memories
+                
+            except Exception as e:
+                print(f"⚠️ Error retrieving memories: {e}")
+                return self._retrieve_from_fallback(username, k)
+        else:
+            return self._retrieve_from_fallback(username, k)
+    
+    def _retrieve_from_fallback(self, username: str, k: int = 3) -> List[str]:
+        """Retrieve memories from fallback storage."""
+        if username not in self.fallback_memory:
             return []
         
-        try:
-            docs = self.vector_store.similarity_search(
-                query,
-                k=k,
-                filter={"$and": [{"username": username}, {"type": "timeline_memory"}]}
-            )
-            
-            memories = []
-            for doc in docs:
-                content = doc.page_content
-                memories.append(f"[TIMELINE]: {content}")
-            
-            return memories
-            
-        except Exception as e:
-            print(f"⚠️ Error retrieving memories: {e}")
-            return []
+        # Return most recent memories (simple fallback without semantic search)
+        user_memories = self.fallback_memory[username]
+        recent_memories = sorted(user_memories, key=lambda x: x['timestamp'], reverse=True)[:k]
+        
+        memories = []
+        for memory in recent_memories:
+            memories.append(f"[TIMELINE]: {memory['content']}")
+        
+        return memories
     
     def get_user_timeline_count(self, username: str) -> int:
         """Get count of stored timeline memories for a user."""
-        if not self.vector_store:
-            return 0
-            
-        try:
-            docs = self.vector_store.similarity_search(
-                "",
-                k=100,  # Get many to count
-                filter={"$and": [{"username": username}, {"type": "timeline_memory"}]}
-            )
-            return len(docs)
-        except Exception:
-            return 0
+        if self.available and self.vector_store:
+            try:
+                docs = self.vector_store.similarity_search(
+                    "",
+                    k=100,  # Get many to count
+                    filter={"$and": [{"username": username}, {"type": "timeline_memory"}]}
+                )
+                return len(docs)
+            except Exception:
+                return len(self.fallback_memory.get(username, []))
+        else:
+            return len(self.fallback_memory.get(username, []))
 
 class EnhancedLumoAgent:
     """Enhanced AI Agent using LangGraph for state management with MongoDB checkpointer + dual user collection writes."""
