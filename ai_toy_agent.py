@@ -61,12 +61,15 @@ try:
     if not GEMINI_API_KEY:
         try:
             import streamlit as st
+            print("🔍 Attempting to load Streamlit secrets...")
             # Try both possible API key names
             GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY") or st.secrets.get("GOOGLE_API_KEY")
             MODEL_NAME = st.secrets.get("MODEL_NAME", "gemini-2.5-flash-preview-04-17")
             MONGODB_URI = st.secrets.get("MONGODB_URI")
             DATABASE_NAME = st.secrets.get("DATABASE_NAME", "LUMO")
-        except:
+            print(f"🔍 Streamlit secrets loaded - API key: {bool(GEMINI_API_KEY)}, MongoDB: {bool(MONGODB_URI)}")
+        except Exception as e:
+            print(f"⚠️ Failed to load Streamlit secrets: {e}")
             # Keep the defaults we set above
             pass
             
@@ -77,6 +80,12 @@ except Exception as e:
         MODEL_NAME = "gemini-2.5-flash-preview-04-17"
 
 print(f"✅ Configuration loaded: MODEL_NAME={MODEL_NAME}, DATABASE_NAME={DATABASE_NAME}")
+print(f"🔍 Debug - GEMINI_API_KEY present: {bool(GEMINI_API_KEY)}")
+print(f"🔍 Debug - MONGODB_URI present: {bool(MONGODB_URI)}")
+if not GEMINI_API_KEY:
+    print("❌ No API key found - check environment variables or Streamlit secrets")
+if not MONGODB_URI:
+    print("❌ No MongoDB URI found - check environment variables or Streamlit secrets")
 
 # Core Prompts and Configuration
 class InteractionType(Enum):
