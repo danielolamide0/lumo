@@ -30,6 +30,7 @@ except ImportError:
 
 # Enhanced Memory System Imports - with SQLite compatibility fix for deployment
 VECTOR_MEMORY_AVAILABLE = False
+EMBEDDING_TYPE = "simple"  # Default fallback
 try:
     # Fix SQLite version issue for ChromaDB in cloud deployment
     import sys
@@ -42,8 +43,18 @@ try:
     
     import chromadb
     from langchain_chroma import Chroma
-    from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_core.documents import Document
+    
+    # Try lightweight embeddings first, fallback to HuggingFace if needed
+    try:
+        from langchain_community.embeddings import OpenAIEmbeddings
+        EMBEDDING_TYPE = "openai"
+    except:
+        try:
+            from langchain_huggingface import HuggingFaceEmbeddings
+            EMBEDDING_TYPE = "huggingface"
+        except:
+            EMBEDDING_TYPE = "simple"
     VECTOR_MEMORY_AVAILABLE = True
     print("✅ Vector memory system (ChromaDB) loaded successfully")
 except Exception as e:
@@ -400,28 +411,75 @@ class VectorMemoryManager:
             print("📝 Using fallback in-memory vector storage")
     
     def _initialize_vector_store(self):
-        """Initialize ChromaDB vector store."""
+        """Initialize ChromaDB vector store with lightweight embeddings."""
         if not VECTOR_MEMORY_AVAILABLE:
             return
             
         try:
-            embeddings = HuggingFaceEmbeddings(
-                model_name="all-MiniLM-L6-v2",
-                model_kwargs={'device': 'cpu'},
-                encode_kwargs={'normalize_embeddings': True}
-            )
+            # Use simple text-based embeddings for cloud compatibility
+            embeddings = self._get_embedding_function()
             
             self.vector_store = Chroma(
                 collection_name=self.collection_name,
                 embedding_function=embeddings,
                 persist_directory="./chroma_lumo_timeline"
             )
-            print("🧠 Vector memory initialized for timeline summaries only")
+            print(f"🧠 Vector memory initialized with {EMBEDDING_TYPE} embeddings")
             
         except Exception as e:
             print(f"⚠️ Vector memory initialization failed: {e}")
             self.vector_store = None
             self.available = False
+    
+    def _get_embedding_function(self):
+        """Get appropriate embedding function based on environment."""
+        if EMBEDDING_TYPE == "openai" and GEMINI_API_KEY:
+            # Use OpenAI embeddings if available (lightweight)
+            try:
+                from langchain_community.embeddings import OpenAIEmbeddings
+                return OpenAIEmbeddings(openai_api_key=GEMINI_API_KEY)
+            except:
+                pass
+        
+        if EMBEDDING_TYPE == "huggingface":
+            # Use HuggingFace embeddings (heavier but more reliable)
+            try:
+                from langchain_huggingface import HuggingFaceEmbeddings
+                return HuggingFaceEmbeddings(
+                    model_name="all-MiniLM-L6-v2",
+                    model_kwargs={'device': 'cpu'},
+                    encode_kwargs={'normalize_embeddings': True}
+                )
+            except:
+                pass
+        
+        # Fallback to simple embeddings
+        return self._create_simple_embeddings()
+    
+    def _create_simple_embeddings(self):
+        """Create simple hash-based embeddings as fallback."""
+        class SimpleEmbeddings:
+            def embed_documents(self, texts):
+                # Simple hash-based embeddings for basic functionality
+                import hashlib
+                embeddings = []
+                for text in texts:
+                    # Create a simple 384-dimensional vector from text hash
+                    hash_obj = hashlib.md5(text.encode())
+                    hash_hex = hash_obj.hexdigest()
+                    # Convert hex to numbers and normalize
+                    embedding = [int(hash_hex[i:i+2], 16) / 255.0 for i in range(0, min(len(hash_hex), 32), 2)]
+                    # Pad to 384 dimensions
+                    while len(embedding) < 384:
+                        embedding.extend(embedding[:min(384-len(embedding), len(embedding))])
+                    embeddings.append(embedding[:384])
+                return embeddings
+            
+            def embed_query(self, text):
+                return self.embed_documents([text])[0]
+        
+        print("📝 Using simple hash-based embeddings (fallback)")
+        return SimpleEmbeddings()
     
     def store_timeline_memory(self, username: str, timeline: Dict[str, Any]):
         """Store timeline memory in vector database or fallback storage."""
