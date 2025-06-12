@@ -1,4 +1,18 @@
+import sys
 import os
+
+# Force SQLite3 replacement before any other imports for ChromaDB compatibility
+SQLITE_REPLACED = False
+try:
+    import pysqlite3
+    sys.modules['sqlite3'] = pysqlite3
+    SQLITE_REPLACED = True
+    print("🔧 Successfully replaced sqlite3 with pysqlite3-binary for ChromaDB compatibility")
+except ImportError:
+    print("📝 pysqlite3-binary not available, using system SQLite")
+    SQLITE_REPLACED = False
+
+# Now proceed with regular imports
 import uuid
 import streamlit as st
 from dotenv import load_dotenv
@@ -19,46 +33,61 @@ from langgraph.graph import StateGraph, END
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, OperationFailure
 
-# Try to import LangGraph MongoDB checkpointer, fallback to memory if unavailable
+# Try to import LangGraph MongoDB checkpointer with enhanced debugging
+MONGODB_CHECKPOINTER_AVAILABLE = False
+MongoDBSaver = None
 try:
+    print("🔍 Attempting to import LangGraph MongoDB checkpointer...")
     from langgraph.checkpoint.mongodb import MongoDBSaver
     MONGODB_CHECKPOINTER_AVAILABLE = True
-except ImportError:
-    print("⚠️ MongoDB checkpointer not available, will use memory-only mode")
+    print("✅ LangGraph MongoDB checkpointer imported successfully")
+except ImportError as e:
+    print(f"⚠️ MongoDB checkpointer not available: {e}")
+    print("📝 Will use memory-only mode for LangGraph")
+    MongoDBSaver = None
+    MONGODB_CHECKPOINTER_AVAILABLE = False
+except Exception as e:
+    print(f"❌ Unexpected error importing MongoDB checkpointer: {e}")
     MongoDBSaver = None
     MONGODB_CHECKPOINTER_AVAILABLE = False
 
-# Enhanced Memory System Imports - with SQLite compatibility fix for deployment
+# Enhanced Memory System Imports - ChromaDB with SQLite compatibility
 VECTOR_MEMORY_AVAILABLE = False
 try:
-    # Fix SQLite version issue for ChromaDB in cloud deployment
-    import sys
-    try:
-        __import__('pysqlite3')
-        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-        print("🔧 Using pysqlite3-binary for ChromaDB compatibility")
-    except ImportError:
-        print("📝 Using system SQLite (local development)")
+    # Check SQLite version after replacement
+    import sqlite3
+    print(f"🔍 SQLite version after replacement: {sqlite3.sqlite_version}")
+    
+    # Check if we're in cloud environment
+    IS_CLOUD_DEPLOYMENT = os.getenv('STREAMLIT_SHARING_MODE') or hasattr(st, 'secrets')
+    print(f"🔍 Cloud deployment detected: {IS_CLOUD_DEPLOYMENT}")
     
     # ChromaDB imports - optional for enhanced memory
-    print("🔍 Attempting to import ChromaDB...")
+    print("🔍 Step 1: Attempting to import ChromaDB...")
     import chromadb
-    print("✅ ChromaDB imported successfully")
+    print("✅ Step 1: ChromaDB imported successfully")
     
-    print("🔍 Attempting to import langchain_chroma...")
+    print("🔍 Step 2: Attempting to import langchain_chroma...")
     from langchain_chroma import Chroma
-    print("✅ langchain_chroma imported successfully")
+    print("✅ Step 2: langchain_chroma imported successfully")
     
-    print("🔍 Attempting to import Document...")
+    print("🔍 Step 3: Attempting to import Document...")
     from langchain_core.documents import Document
-    print("✅ Document imported successfully")
+    print("✅ Step 3: Document imported successfully")
+    
+    print("🔍 Step 4: Testing ChromaDB client creation...")
+    test_client = chromadb.Client()
+    print("✅ Step 4: ChromaDB client created successfully")
     
     # Skip HuggingFace embeddings to avoid PyTorch conflicts
-    print("📝 ChromaDB available but using simple embeddings for cloud compatibility")
+    print("📝 ChromaDB available with simple embeddings for cloud compatibility")
     VECTOR_MEMORY_AVAILABLE = True
     print("✅ Vector memory system (ChromaDB) loaded successfully")
 except Exception as e:
+    import traceback
     print(f"⚠️ Vector memory system not available: {e}")
+    print(f"🔍 Full error traceback:")
+    print(traceback.format_exc())
     print("📝 Will use fallback memory system (MongoDB-only)")
     VECTOR_MEMORY_AVAILABLE = False
 
@@ -411,7 +440,7 @@ class VectorMemoryManager:
             print("📝 Using fallback in-memory vector storage")
     
     def _initialize_vector_store(self):
-        """Initialize ChromaDB vector store."""
+        """Initialize ChromaDB vector store with cloud compatibility."""
         if not VECTOR_MEMORY_AVAILABLE:
             return
             
@@ -419,15 +448,38 @@ class VectorMemoryManager:
             # Use simple embeddings to avoid PyTorch conflicts
             embeddings = self._create_simple_embeddings()
             
-            self.vector_store = Chroma(
-                collection_name=self.collection_name,
-                embedding_function=embeddings,
-                persist_directory="./chroma_lumo_timeline"
-            )
-            print("🧠 Vector memory initialized with simple embeddings (cloud-compatible)")
+            # Check if we're in cloud environment
+            is_cloud = os.getenv('STREAMLIT_SHARING_MODE') or hasattr(st, 'secrets')
+            
+            if is_cloud:
+                # Use in-memory ChromaDB for cloud deployment (ephemeral filesystem)
+                print("🔍 Cloud environment detected - using in-memory ChromaDB")
+                client = chromadb.Client()
+                collection = client.get_or_create_collection(
+                    name=self.collection_name,
+                    embedding_function=embeddings
+                )
+                self.vector_store = Chroma(
+                    client=client,
+                    collection_name=self.collection_name,
+                    embedding_function=embeddings
+                )
+                print("🧠 Vector memory initialized with in-memory ChromaDB (cloud-compatible)")
+            else:
+                # Use persistent ChromaDB for local development
+                print("🔍 Local environment detected - using persistent ChromaDB")
+                self.vector_store = Chroma(
+                    collection_name=self.collection_name,
+                    embedding_function=embeddings,
+                    persist_directory="./chroma_lumo_timeline"
+                )
+                print("🧠 Vector memory initialized with persistent ChromaDB (local development)")
             
         except Exception as e:
+            import traceback
             print(f"⚠️ Vector memory initialization failed: {e}")
+            print(f"🔍 Full error traceback:")
+            print(traceback.format_exc())
             self.vector_store = None
             self.available = False
     
@@ -574,19 +626,41 @@ class EnhancedLumoAgent:
             except Exception as e:
                 print(f"⚠️ Could not initialize MongoDB client for users collection: {e}")
         
-        # Initialize LangGraph components
-        if use_mongodb_checkpointer:
+        # Initialize LangGraph components with enhanced debugging
+        if use_mongodb_checkpointer and MONGODB_CHECKPOINTER_AVAILABLE:
             try:
-                checkpointer_client = MongoClient(MONGODB_URI)
-                self.checkpointer = MongoDBSaver(
-                    client=checkpointer_client,
-                    db_name=DATABASE_NAME
-                )
-                print("✅ LangGraph MongoDB checkpointer initialized")
+                print("🔍 Attempting to initialize MongoDB checkpointer...")
+                print(f"🔍 MongoDB URI available: {bool(MONGODB_URI)}")
+                print(f"🔍 Database name: {DATABASE_NAME}")
+                
+                if not MONGODB_URI:
+                    print("❌ MongoDB URI not found - checkpointer disabled")
+                    self.checkpointer = None
+                else:
+                    print("🔍 Creating MongoDB client for checkpointer...")
+                    checkpointer_client = MongoClient(MONGODB_URI)
+                    
+                    print("🔍 Testing MongoDB connection...")
+                    checkpointer_client.admin.command('ping')
+                    print("✅ MongoDB connection test successful")
+                    
+                    print("🔍 Initializing MongoDBSaver...")
+                    self.checkpointer = MongoDBSaver(
+                        client=checkpointer_client,
+                        db_name=DATABASE_NAME
+                    )
+                    print("✅ LangGraph MongoDB checkpointer initialized successfully")
             except Exception as e:
+                import traceback
                 print(f"❌ Failed to initialize MongoDB checkpointer: {e}")
+                print(f"🔍 Full error traceback:")
+                print(traceback.format_exc())
                 self.checkpointer = None
         else:
+            if not use_mongodb_checkpointer:
+                print("📝 MongoDB checkpointer disabled by configuration")
+            elif not MONGODB_CHECKPOINTER_AVAILABLE:
+                print("📝 MongoDB checkpointer not available (import failed)")
             self.checkpointer = None
         
         # Setup LangGraph workflow
@@ -600,7 +674,12 @@ class EnhancedLumoAgent:
             self.ai_app = self.workflow.compile()
             print("⚠️ LangGraph workflow compiled without persistence")
         
-        print("✅ Enhanced Lumo Agent fully initialized with LangGraph checkpointer!")
+        # Print final system status
+        print("🔍 Final System Status:")
+        print(f"  📊 MongoDB Checkpointer: {'✅ Active' if self.checkpointer else '❌ Disabled'}")
+        print(f"  🧠 Vector Memory (ChromaDB): {'✅ Active' if VECTOR_MEMORY_AVAILABLE else '❌ Disabled'}")
+        print(f"  🤖 LLM (Gemini): {'✅ Active' if self.llm else '❌ Disabled'}")
+        print("✅ Enhanced Lumo Agent fully initialized!")
     
     def _load_user_data_from_original_collection(self, username: str) -> Optional[Dict[str, Any]]:
         """Load user data from the original users collection for migration."""
