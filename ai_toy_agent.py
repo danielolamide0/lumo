@@ -41,9 +41,18 @@ try:
         print("📝 Using system SQLite (local development)")
     
     # ChromaDB imports - optional for enhanced memory
+    print("🔍 Attempting to import ChromaDB...")
     import chromadb
+    print("✅ ChromaDB imported successfully")
+    
+    print("🔍 Attempting to import langchain_chroma...")
     from langchain_chroma import Chroma
+    print("✅ langchain_chroma imported successfully")
+    
+    print("🔍 Attempting to import Document...")
     from langchain_core.documents import Document
+    print("✅ Document imported successfully")
+    
     # Skip HuggingFace embeddings to avoid PyTorch conflicts
     print("📝 ChromaDB available but using simple embeddings for cloud compatibility")
     VECTOR_MEMORY_AVAILABLE = True
