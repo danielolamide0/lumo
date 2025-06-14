@@ -1,3 +1,10 @@
+import sys
+try:
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
+
 import os
 import uuid
 import streamlit as st
@@ -26,8 +33,15 @@ try:
     MONGODB_CHECKPOINTER_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️ MongoDB checkpointer import error: {str(e)}")
-    MongoDBSaver = None
-    MONGODB_CHECKPOINTER_AVAILABLE = False
+    try:
+        from langgraph.checkpoint.sqlite import SqliteSaver
+        print("✅ Using SQLite checkpointer as fallback")
+        MongoDBSaver = SqliteSaver
+        MONGODB_CHECKPOINTER_AVAILABLE = True
+    except ImportError as e:
+        print(f"⚠️ SQLite checkpointer import error: {str(e)}")
+        MongoDBSaver = None
+        MONGODB_CHECKPOINTER_AVAILABLE = False
 
 # Enhanced Memory System Imports
 import chromadb

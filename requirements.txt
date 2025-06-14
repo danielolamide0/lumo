@@ -9,3 +9,5 @@ pymongo
 chromadb==1.0.12
 langchain-chroma==0.2.4
 sentence-transformers
+pysqlite3-binary
+langgraph[mongodb]
