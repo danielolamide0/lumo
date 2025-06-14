@@ -12,6 +12,6 @@ sentence-transformers==2.5.1
 pysqlite3-binary
 langchain-huggingface
 pytz
-torch==2.1.2
+torch>=2.7.0
 transformers>=4.38.2
 numpy>=1.24.0,<2.0.0
