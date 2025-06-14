@@ -40,8 +40,28 @@ except ImportError as e:
         MONGODB_CHECKPOINTER_AVAILABLE = True
     except ImportError as e:
         print(f"⚠️ SQLite checkpointer import error: {str(e)}")
-    MongoDBSaver = None
-    MONGODB_CHECKPOINTER_AVAILABLE = False
+        MongoDBSaver = None
+        MONGODB_CHECKPOINTER_AVAILABLE = False
+
+# Initialize SQLite database if MongoDB is not available
+if not MONGODB_CHECKPOINTER_AVAILABLE:
+    try:
+        import sqlite3
+        db_path = "lumo_memory.db"
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS memory_store (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        print("✅ SQLite database initialized successfully")
+    except Exception as e:
+        print(f"⚠️ SQLite initialization error: {str(e)}")
 
 # Enhanced Memory System Imports
 import chromadb
