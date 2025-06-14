@@ -11,3 +11,5 @@ langchain-chroma==0.2.4
 sentence-transformers
 pysqlite3-binary
 langgraph[mongodb]
+langchain-huggingface
+pytz
