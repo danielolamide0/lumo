@@ -4,7 +4,7 @@ langgraph==0.4.3
 langchain-google-genai
 google-generativeai
 python-dotenv
-streamlit>=1.32.0
+streamlit==1.31.1
 pymongo==4.6.1
 chromadb==1.0.12
 langchain-chroma>=0.2.4
@@ -12,5 +12,6 @@ sentence-transformers==2.5.1
 pysqlite3-binary
 langchain-huggingface
 pytz
-torch>=2.5.0
+torch==2.1.2
 transformers>=4.38.2
+numpy>=1.24.0,<2.0.0
