@@ -13,5 +13,5 @@ pysqlite3-binary
 langgraph[mongodb]
 langchain-huggingface
 pytz
-torch==2.2.1
-transformers==4.38.2
+torch>=2.5.0
+transformers>=4.38.2
