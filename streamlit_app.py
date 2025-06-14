@@ -104,6 +104,19 @@ def reset_conversation():
     """Reset the current conversation."""
     st.session_state.messages = []
 
+def check_user_chat_count(username: str) -> int:
+    """Check the number of chats a user has in the database."""
+    try:
+        mongo_client = MongoClient(MONGODB_URI)
+        db = mongo_client[DATABASE_NAME]
+        user = db.users.find_one({"username": username})
+        if user and "chats" in user:
+            return len(user["chats"])
+        return 0
+    except Exception as e:
+        print(f"Error checking chat count: {e}")
+        return 0
+
 def authenticate_user(username: str):
     """Authenticate user and load their data."""
     try:
@@ -115,8 +128,14 @@ def authenticate_user(username: str):
         st.session_state.user_info = user_info
         st.session_state.authenticated = True
         
-        # FIXED: Load user's previous chat history automatically on login
-        load_user_chat_history(username)
+        # Check if user needs parental setup
+        chat_count = check_user_chat_count(username)
+        if chat_count == 0:
+            st.session_state.needs_parental_setup = True
+        else:
+            st.session_state.needs_parental_setup = False
+            # Load user's previous chat history automatically on login
+            load_user_chat_history(username)
         
         return True
         
@@ -174,6 +193,87 @@ if not st.session_state.authenticated:
 
 # 🏠 Main Application (After Authentication)
 else:
+    # Check if user needs parental setup
+    if st.session_state.get('needs_parental_setup', False):
+        st.title("👨‍👩‍👧‍👦 Parental Setup")
+        st.markdown("### Welcome to Lumo! Let's set up your profile.")
+        
+        with st.form("parental_setup"):
+            child_name = st.text_input("Child's Name:", placeholder="Enter your child's name")
+            date_of_birth = st.date_input("Date of Birth:", min_value=datetime(2010, 1, 1), max_value=datetime.now())
+            interests = st.text_area("Interests:", placeholder="What does your child like? (e.g., dinosaurs, space, art)")
+            topics_to_avoid = st.text_area("Topics to Avoid:", placeholder="What topics should we avoid? (e.g., scary movies, certain games)")
+            
+            submit = st.form_submit_button("Complete Setup")
+            
+            if submit:
+                if child_name.strip():
+                    # Calculate age from date of birth
+                    today = datetime.now().date()
+                    age = (today - date_of_birth).days // 365
+                    
+                    # Convert date_of_birth to datetime for MongoDB
+                    date_of_birth_datetime = datetime.combine(date_of_birth, datetime.min.time())
+                    
+                    # Format interests (limit to 3)
+                    interests_list = [i.strip() for i in interests.split(",") if i.strip()][:3]
+                    interests_text = ", ".join(interests_list) if interests_list else "fun things"
+                    
+                    # Create profile object
+                    profile = {
+                        "child_name": child_name,
+                        "date_of_birth": date_of_birth_datetime,  # Using datetime instead of date
+                        "age": age,
+                        "interests": interests_text,  # Store formatted interests text
+                        "topics_to_avoid": topics_to_avoid,
+                        "parental_setup_complete": True,
+                        "created_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow(),
+                        "interaction_count": 0,
+                        "current_mode": "general",
+                        "current_emotion": "neutral",
+                        "email": f"{st.session_state.username}@lumo.ai",
+                        "user_timezone": "UTC"
+                    }
+                    
+                    # Save to MongoDB
+                    try:
+                        mongo_client = MongoClient(MONGODB_URI)
+                        db = mongo_client[DATABASE_NAME]
+                        
+                        # Update user document with profile
+                        db.users.update_one(
+                            {"username": st.session_state.username},
+                            {
+                                "$set": {
+                                    "profile": profile,
+                                    "interaction_count": 0,
+                                    "created_at": datetime.utcnow(),
+                                    "updated_at": datetime.utcnow()
+                                }
+                            },
+                            upsert=True
+                        )
+                        
+                        # Print debug info
+                        print(f"Debug - Profile being saved: {profile}")
+                        print(f"Debug - Interests being saved: {profile.get('interests')}")
+                        
+                        # Update session state
+                        st.session_state.needs_parental_setup = False
+                        st.session_state.user_info = profile
+                        
+                        # Get first message from Lumo
+                        initial_message = st.session_state.agent.process_message("", st.session_state.username)
+                        st.session_state.messages = [{"role": "assistant", "content": initial_message}]
+                        
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error saving setup: {e}")
+                else:
+                    st.warning("Please enter your child's name")
+        st.stop()
+    
     # Header
     st.title(f"🧸 Lumo AI - Enhanced Chat")
     st.markdown(f"**Logged in as:** {st.session_state.username}")
@@ -222,7 +322,11 @@ else:
             st.write(f"**Username:** {st.session_state.user_info.get('username', 'Unknown')}")
             st.write(f"**Interactions:** {st.session_state.user_info.get('interaction_count', 0)}")
             if st.session_state.user_info.get("created_at"):
-                st.write(f"**Created:** {st.session_state.user_info.get('created_at')[:10]}")
+                created_at = st.session_state.user_info.get('created_at')
+                if isinstance(created_at, datetime):
+                    st.write(f"**Created:** {created_at.strftime('%Y-%m-%d')}")
+                else:
+                    st.write(f"**Created:** {created_at}")
             st.write(f"**Storage:** {st.session_state.user_info.get('storage_type', 'Unknown')}")
         
         # Data management
@@ -365,46 +469,30 @@ with st.expander("⚙️ Configure Lumo's Architecture (Core + Chat + Specialize
         st.info(f"**Total length:** {len(combined_prompt)} characters")
         st.success("**Architecture: Core Identity + Chat (Shared) + Specialized Mode**")
 
-st.subheader("💬 Chat with Lumo")
+# Chat interface
+st.markdown("### �� Chat with Lumo")
 
 # Display chat messages
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    if message["role"] == "user":
+        st.chat_message("user").write(message["content"])
+    else:
+        st.chat_message("assistant").write(message["content"])
 
 # Chat input
-if prompt := st.chat_input("What do you want to say to Lumo?"):
+if prompt := st.chat_input("Type your message here..."):
+    # Add user message to chat
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        with st.spinner("Lumo is thinking..."):
-            # Use the enhanced process_message method
-            result = st.session_state.agent.process_message(st.session_state.username, prompt)
-            
-            if result["success"]:
-                ai_response_content = result["response"]
-                
-                # Show enhanced info
-                info_parts = []
-                if result.get("persistent"):
-                    info_parts.append("💾 Saved")
-                else:
-                    info_parts.append("⚠️ Not saved")
-                
-                if result.get("vector_memories", 0) > 0:
-                    info_parts.append(f"🧠 {result['vector_memories']} memories")
-                
-                info_parts.append(f"🎭 {result.get('mode', 'general').title()}")
-                info_parts.append(f"😊 {result.get('emotion', 'neutral').title()}")
-                
-                message_placeholder.markdown(ai_response_content)
-                st.caption(" | ".join(info_parts))
-            else:
-                ai_response_content = result.get("response", "I encountered an error processing your message.")
-                message_placeholder.markdown(ai_response_content)
-                st.error("Failed to process message")
+    st.chat_message("user").write(prompt)
+    
+    # Get AI response
+    try:
+        response = st.session_state.agent.process_message(prompt, st.session_state.username)
         
-        st.session_state.messages.append({"role": "assistant", "content": ai_response_content}) 
+        # Add AI response to chat
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.chat_message("assistant").write(response)
+        
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+        print(f"Error in chat: {e}") 

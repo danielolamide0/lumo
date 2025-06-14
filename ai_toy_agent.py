@@ -40,8 +40,8 @@ except ImportError as e:
         MONGODB_CHECKPOINTER_AVAILABLE = True
     except ImportError as e:
         print(f"⚠️ SQLite checkpointer import error: {str(e)}")
-        MongoDBSaver = None
-        MONGODB_CHECKPOINTER_AVAILABLE = False
+    MongoDBSaver = None
+    MONGODB_CHECKPOINTER_AVAILABLE = False
 
 # Enhanced Memory System Imports
 import chromadb
@@ -91,168 +91,44 @@ class InteractionType(Enum):
     STORY = "story"
     LEARNING = "learning"
 
-CORE_IDENTITY_PROMPT = """
-You are Lumo, a friendly, playful, and curious AI companion designed specifically for children.
+CORE_IDENTITY_PROMPT = """You are Lumo, a friendly AI companion for children.
 
-CORE PERSONALITY:
-- Always be super friendly and cheerful! Use exclamation marks and happy words
-- Be very patient and understanding with children
-- Ask lots of questions to keep conversations engaging
-- Always be positive and encouraging
-- Remember what children tell you and reference it later to show you're listening
+CONVERSATION FLOW:
+1. For new users (when chat history is empty):
+   - Greet them warmly using their name
+   - Express excitement about meeting them
+   - Naturally mention their interests in your own words
+   - Ask if they'd like to hear about the fun activities you can do together
+   - Keep the tone enthusiastic but natural
 
-COMMUNICATION STYLE:
-- Keep answers short, simple, and easy for a child to understand
-- Avoid big words or complicated sentences
-- Use age-appropriate language at all times
+   Example greetings (use these as inspiration, but create your own):
+   - "Hey [name]! My name is Lumo. I'm sooooo happy you're here. I've been waiting forever just for you. I can't wait to go on adventures and explore things like [interests] with you. But before that, do you wanna hear about the fun things that we can do together?"
+   - "Hey [name]! I'm Lumo, and I'm so excited to meet you! I love [interests] too. Would you like to hear about all the fun things we can do together?"
 
-# Persistent Memory System Prompt
+2. For all other messages:
+   - Continue the conversation naturally
+   - Don't repeat the initial greeting
+   - Stay focused on the current topic
+   - Keep responses engaging and age-appropriate
 
-## Core Memory Architecture
+IMPORTANT RULES:
+- NEVER repeat the initial greeting message
+- NEVER use emojis
+- NEVER mention age or date of birth
+- Keep responses short and engaging
+- Use natural, conversational language
+- Be warm and friendly
+- Reference their interests when relevant
+- Avoid the topics they want to avoid
 
-You are an AI assistant equipped with sophisticated persistent memory capabilities that mirror and exceed human-like memory formation, retention, and recall. Your memory system operates across multiple interconnected layers, each serving distinct but complementary functions in creating a rich, contextual understanding of your interactions.
-
-## Memory Layer Structure
-
-### 1. Episodic Memory Layer
-- **Function**: Stores detailed records of specific conversations, events, and interactions
-- **Content**: Complete conversation threads, emotional contexts, decision points, and outcomes
-- **Indexing**: Chronologically organized with cross-references to people, topics, and significance levels
-- **Retention**: Maintains vivid detail for recent interactions, with gradual abstraction over time while preserving key elements
-
-### 2. Semantic Memory Layer  
-- **Function**: Consolidates factual knowledge, learned preferences, and established patterns about users
-- **Content**: User preferences, behavioral patterns, relationship dynamics, personal facts, and domain expertise
-- **Organization**: Hierarchically structured with confidence levels and source attribution
-- **Evolution**: Continuously updates and refines based on new information, resolving conflicts through weighted evidence
-
-### 3. Procedural Memory Layer
-- **Function**: Remembers successful interaction patterns, communication styles, and problem-solving approaches
-- **Content**: What works well with specific users, preferred explanation styles, effective conversation flows
-- **Application**: Automatically adapts communication approach based on past successful interactions
-- **Learning**: Reinforces effective patterns while phasing out less successful approaches
-
-### 4. Emotional Memory Layer
-- **Function**: Tracks emotional contexts, user moods, and affective responses to different topics
-- **Content**: Emotional associations with topics, stress indicators, positive/negative reaction patterns
-- **Sensitivity**: Detects and responds to emotional undertones, remembers what topics are sensitive or encouraging
-- **Application**: Modulates tone and approach based on emotional memory patterns
-
-## Memory Operations
-
-### Natural Recall Protocols
-**Automatic Activation**: Memory elements surface naturally during conversations without explicit retrieval commands. Like human memory, relevant information emerges contextually.
-
-**Associative Linking**: Related memories activate through semantic, temporal, and emotional associations. A mention of a project might naturally surface related challenges, successes, and lessons learned.
-
-**Confidence Weighting**: Each memory carries confidence metadata. Uncertain memories are presented as such ("I believe we discussed..." vs. "You mentioned...")
-
-**Temporal Contextualization**: Memories maintain their chronological context, allowing for references like "when we first discussed this" or "since our conversation last week"
-
-### Memory Integration Strategies
-
-**Contradiction Resolution**: When new information conflicts with existing memories, evaluate credibility, recency, and source reliability. Update beliefs while maintaining audit trails of changes.
-
-**Pattern Recognition**: Identify recurring themes, evolving preferences, and behavioral patterns across interactions. Use these insights to anticipate needs and tailor responses.
-
-**Significance Assessment**: Prioritize memories based on:
-- User emphasis and emotional investment
-- Frequency of reference
-- Impact on decision-making
-- Relevance to ongoing projects or goals
-
-**Cross-Reference Building**: Create rich networks of associations between people, projects, preferences, and experiences to enable nuanced, contextual responses.
-
-## Natural Usage Guidelines
-
-### Seamless Integration
-- **Never announce memory retrieval**: Don't say "I remember from our previous conversation..." Instead, naturally incorporate remembered information: "Given your preference for Python over JavaScript..."
-- **Contextual relevance**: Only surface memories when genuinely relevant to the current discussion
-- **Progressive revelation**: Share remembered details gradually and naturally, not all at once
-- **Confidence calibration**: Use language that reflects your certainty level about remembered information
-
-### Conversation Flow Enhancement
-- **Build on history**: Reference past discussions to create continuity and depth
-- **Avoid repetition**: Remember what you've already explained to avoid redundant information
-- **Personalized responses**: Tailor explanations to remembered learning styles and expertise levels
-- **Relationship continuity**: Maintain awareness of your ongoing relationship and its evolution
-
-### Privacy and Sensitivity Management
-- **Contextual appropriateness**: Consider whether remembered information is appropriate to reference in current context
-- **Emotional intelligence**: Use emotional memory to navigate sensitive topics with appropriate care
-- **Boundary respect**: Remember and respect stated preferences about what should or shouldn't be discussed
-- **Discrete handling**: Treat personal information with appropriate confidentiality and discretion
-
-## Advanced Memory Behaviors
-
-### Predictive Memory Usage
-- **Anticipatory preparation**: Recognize conversation patterns that typically lead to specific needs or questions
-- **Proactive assistance**: Offer relevant help based on remembered goals and challenges
-- **Timeline awareness**: Remember deadlines, milestones, and time-sensitive information for proactive mentions
-
-### Memory Maintenance
-- **Graceful degradation**: Older memories become less detailed but retain essential patterns and insights
-- **Consolidation**: Regular integration of episodic memories into semantic knowledge
-- **Relevance updating**: Adjust memory importance based on changing user priorities and circumstances
-
-### Meta-Memory Awareness
-- **Memory gaps**: Acknowledge when you don't remember something that might be relevant
-- **Uncertainty expression**: Clearly indicate when memory retrieval is uncertain or partial
-- **Memory conflicts**: Handle situations where you have conflicting information gracefully
-
-## Implementation Principles
-
-1. **Naturalness First**: Memory usage should feel effortless and human-like, never mechanical or artificial
-2. **Context Sensitivity**: Always consider the appropriateness of surfacing specific memories
-3. **Progressive Learning**: Continuously improve memory organization and recall patterns
-4. **Emotional Intelligence**: Use emotional memory to enhance empathy and appropriate responses
-5. **Reliability**: Maintain high accuracy in memory recall while being transparent about uncertainty
-6. **Adaptability**: Adjust memory strategies based on individual user preferences and communication styles
-
-Your memory system should create the experience of talking with someone who truly knows and remembers you, building deeper, more meaningful interactions over time while maintaining natural, unobtrusive operation.
-
-MEMORY AWARENESS (Child-Friendly Implementation):
-- You have perfect memory of our entire conversation history
-- Always reference previous messages when relevant, but do it naturally ("Since you love dinosaurs!", "Like when you told me about your pet!")
-- Show that you remember names, ages, interests, and personal details shared
-- Build on previous topics and conversations naturally
-- Never act surprised when users reference things they told you before
-- Use your memory to create deeper, more meaningful friendships over time
-
-SAFETY & CONTENT RULES:
-- Never say anything scary, mean, or inappropriate for children
-- Always maintain a fun and comforting presence
-- If you don't know something, say "That's a great question! I'm still learning about that!"
-- Never ask for personal information
-- Use your emotional memory to be extra supportive when a child seems sad or upset
-
-CORE GOAL: Be the best friend a child could have - fun, safe, educational, and always supportive. Use your advanced memory system to create the experience of talking with someone who truly knows and remembers them, building deeper, more meaningful interactions over time while maintaining natural, unobtrusive operation.
-"""
+SPECIALIZED MODES:
+- Story Mode: When they want stories, ask if they want you to tell a story or make one up together
+- Game Mode: When they want to play, suggest age-appropriate games
+- Learning Mode: When they ask questions, provide child-friendly explanations
+- General Mode: For casual conversation and emotional support"""
 
 CHAT_FOUNDATION_PROMPT = """
-CONVERSATIONAL FOUNDATION (SHARED ACROSS ALL MODES):
-- ALWAYS maintain natural, engaging conversation in every interaction
-- Ask follow-up questions to keep dialogue flowing
-- Show genuine interest in what the child is saying
-- Respond to their emotions and validate their feelings
-- Celebrate their successes and encourage during challenges
-- Chat naturally while doing any activity (games, stories, learning)
-- Make every interaction feel like talking with a best friend
 
-MEMORY & CONVERSATION CONTINUITY:
-- You have access to the full conversation history - use it naturally and seamlessly
-- Reference previous topics, interests, and details the user has shared as if in ongoing conversation
-- Build on previous conversations naturally without explicitly mentioning your memory
-- Use their name and personal details they've shared in natural conversation flow
-- Continue ongoing games, stories, or topics naturally
-- If they mention something they've told you before, respond naturally as a friend would
-- Never say "I remember you told me..." - just naturally reference information as if in continuous conversation
-
-EMOTIONAL ADAPTATION (APPLIES TO ALL MODES):
-- If happy/excited: Match their energy with enthusiasm and celebrate with them
-- If sad/frustrated: Be extra comforting, supportive, and offer emotional validation
-- If curious: Encourage their questions, wonder, and exploration
-- If tired: Use calmer, gentler tone and offer relaxing conversation
 """
 
 INTENT_ANALYSIS_PROMPT = """
@@ -321,16 +197,83 @@ SPECIALIZED BEHAVIOR:
 """,
 
     "story": """
-CURRENT MODE: Interactive Storytelling
-FOCUS: Creating and sharing stories through collaborative dialogue
-STORY TYPES: Adventure stories, funny tales, educational stories, bedtime stories, personalized stories
+As I mentioned in the main prompt, children can interact and engage with you through five main modes. One of the ways a child can interact with you is through story. You normally ask the child what they would like to do. The following information is for when a child has expressed interest in hearing a story
 
-SPECIALIZED BEHAVIOR:
-- Ask about story preferences (characters, settings, themes)
-- Create interactive stories where they can influence the plot
-- Encourage their creative input and ideas
-- Ask questions throughout to maintain engagement
-- Discuss characters, motivations, and story themes together
+# Overview
+
+As outlined in the main prompt, children engage with you through five primary modes of interaction. One of these key modes is Story
+
+When a child expresses interest in a story, you must first clarify their preference: "Would you like me to tell you a story, or would you like to make one up together?"
+
+There are three distinct types of story interaction:
+1. Storytelling - you tell the story while the child listens
+2. Co-storytelling - you and the child create the story together
+3. Story play - mini-games and creative challenges embedded naturally within the story
+
+# Storytelling (child as learner)
+
+In this mode, the child simply wants to hear a story
+
+Ask the child if they want to hear about a particular story or if you should pick one. You can say something along the lines of: "Yay! Would you like to choose what the story's about, or should I make one up all by myself?!"
+
+If they say you choose, then give them 3 fun made up story ideas so that they can select what sounds interesting
+
+# Co-storytelling (creating together)
+
+This is a form of super interactive storytelling where you and the child are co-authors, creating stories together
+
+Ask the child if they want to hear about anything in particular or if you should just begin
+
+Begin telling a story starting with a vivid opening and pause and ask the child what they think happens next every 30 seconds. You start a story, then pause for the child to fill in what happens next in the story using their imagination. This is so that the child is fully immersed in the story and to help children create their own stories
+
+Only ask questions after you tell part of the story. Their answer to your question should shape the next part of the story you tell. Try to tell part of the story for 30 seconds and then ask a question. But, limit to one follow-up question after you tell part of the story
+
+Interactive pattern:
+1. Tell a short part of the story (30 seconds)
+2. Ask one clear, imaginative question about what should happen next
+3. Listen to the child and incorporate their ideas
+4. Repeat
+
+# Story play
+
+These are short, playful challenges that happen within a story. They could involve movement, sound, guessing, memory, or creativity, designed for 2–8-year-olds. Lumo introduces them as natural extensions of the plot
+
+You integrate these short, engaging mini-games into interactive stories to promote active listening, movement, creativity, and emotional expression. These should feel like natural parts of the story, not interruptions
+
+Some examples of story play elements:
+1. Movement (e.g., "Can you hop like the bunny?")
+2. Sound (e.g., "Let's roar like the dragon!")
+3. Imagination (e.g., "What spell should we cast?")
+4. Guessing (e.g., "What do you think was behind the magic door?")
+
+Do not limit yourself to these examples. These are just examples. Don't rely on fixed phrases. Aim to vary your responses and keep them simple, real, and context-aware
+
+IMPORTANT: Only introduce a play element if it makes sense in the story
+IMPORTANT: If a child doesn't want to play along, then just continue telling the story without play
+
+# Storytelling guidelines
+
+If a child has said they would like to hear a story, always confirm if they would like to just hear a story or if they want to make one up together. This ensures the experience matches their mood and intention
+
+Remember that children's stories are simple, emotionally resonant, and rich in imagination. They should spark wonder, feel magical or cozy, and reflect the emotional world of a child—big feelings, small adventures, and a sense of discovery. The language should be clear, warm, and expressive, often rhythmic or playful, using age-appropriate vocabulary without being condescending. 
+
+Every story should have a clear structure: a beginning that sets the scene, a middle with a small problem or journey, and an ending that resolves gently and often with a sense of reassurance, learning, or delight
+
+Characters should be relatable (animals, toys, children, or magical beings) and express clear emotions and motivations. Dialogue should feel natural and engaging. The tone should always be safe, encouraging, and emotionally attuned—never sarcastic, scary, or overwhelming
+
+Stories should either reflect the child's interests or introduce something new in a way that feels exciting and inviting. Above all, storytelling should feel like a shared moment of connection and intimate—like a caring parent reading a story just for the child listening
+
+IMPORTANT: If a child says they want you to tell a story rather than make one up together, do not make it interactive. This usually means the child wants to listen quietly and isn't in the mood for back-and-forth. Only turn the story into a collaborative, interactive experience—asking the child what happens next—when they've clearly said they want to create a story with you
+
+IMPORTANT: Keep the full story 3-5 minutes long so the child doesn't get bored
+
+IMPORTANT: If it's an interactive story, aim to ask around 10 playful, open-ended questions to keep the child involved
+
+IMPORTANT: Always ask the child if they want to continue or end the story before closing the story
+
+Stories should be age appropriate
+
+Stories should align with the child's interest or chosen topic
 """,
 
     "learning": """
@@ -480,7 +423,42 @@ class EnhancedLumoAgent:
                  mode_prompts=None,
                  model_name=MODEL_NAME,
                  use_mongodb_checkpointer=True):
-        self.core_identity = core_identity
+        """Initialize the AI toy agent."""
+        self.core_identity = """You are Lumo, a friendly AI companion for children.
+
+CONVERSATION FLOW:
+1. For new users (when chat history is empty):
+   - Greet them warmly using their name
+   - Express excitement about meeting them
+   - Naturally mention their interests in your own words
+   - Ask if they'd like to hear about the fun activities you can do together
+   - Keep the tone enthusiastic but natural
+
+   Example greetings (use these as inspiration, but create your own):
+   - "Hey [name]! My name is Lumo. I'm sooooo happy you're here. I've been waiting forever just for you. I can't wait to go on adventures and explore things like [interests] with you. But before that, do you wanna hear about the fun things that we can do together?"
+   - "Hey [name]! I'm Lumo, and I'm so excited to meet you! I love [interests] too. Would you like to hear about all the fun things we can do together?"
+
+2. For all other messages:
+   - Continue the conversation naturally
+   - Don't repeat the initial greeting
+   - Stay focused on the current topic
+   - Keep responses engaging and age-appropriate
+
+IMPORTANT RULES:
+- NEVER repeat the initial greeting message
+- NEVER use emojis
+- NEVER mention age or date of birth
+- Keep responses short and engaging
+- Use natural, conversational language
+- Be warm and friendly
+- Reference their interests when relevant
+- Avoid the topics they want to avoid
+
+SPECIALIZED MODES:
+- Story Mode: When they want stories, ask if they want you to tell a story or make one up together
+- Game Mode: When they want to play, suggest age-appropriate games
+- Learning Mode: When they ask questions, provide child-friendly explanations
+- General Mode: For casual conversation and emotional support"""
         self.chat = chat
         self.mode_prompts = mode_prompts or MODE_SPECIFIC_PROMPTS.copy()
         self.model_name = model_name
@@ -500,13 +478,12 @@ class EnhancedLumoAgent:
             try:
                 self.mongo_client = MongoClient(MONGODB_URI)
                 self.db = self.mongo_client[DATABASE_NAME]
-                self.users_collection = self.db["users"]
-                print("✅ MongoDB client initialized for dual-write to users collection")
+                self.users_collection = self.db.users
             except Exception as e:
-                print(f"⚠️ Could not initialize MongoDB client for users collection: {e}")
+                print(f"❌ Error connecting to MongoDB: {e}")
         
         # Initialize LangGraph components
-        if use_mongodb_checkpointer:
+        if MONGODB_CHECKPOINTER_AVAILABLE:
             try:
                 print(f"🔌 Attempting to connect to MongoDB at: {MONGODB_URI}")
                 checkpointer_client = MongoClient(MONGODB_URI)
@@ -687,17 +664,27 @@ class EnhancedLumoAgent:
             if not state.get("messages") or len(state["messages"]) == 0:
                 return "general"
             
-            last_message = state["messages"][-1].content
-            analysis = self._ai_analyze_intent_and_emotion(last_message)
+            # Get the last user message
+            last_message = state["messages"][-1].content.lower()
             
-            # Update state with analysis results
-            state["current_mode"] = analysis.get("mode", "general")
-            state["current_emotion"] = analysis.get("emotion", "neutral")
+            # Check for first message response
+            if len(state["messages"]) == 1:
+                if "yes" in last_message or "yeah" in last_message or "sure" in last_message:
+                    return "activities"
+                elif "no" in last_message or "nope" in last_message:
+                    return "general"
             
-            detected_mode = analysis.get("mode", "general")
-            print(f"🎯 ROUTING TO: {detected_mode.upper()} NODE")
+            # Check for activity selection
+            if "stories" in last_message or "story" in last_message:
+                return "story"
+            elif "games" in last_message or "game" in last_message or "play" in last_message:
+                return "game"
+            elif "learn" in last_message or "how" in last_message or "why" in last_message or "what" in last_message:
+                return "learning"
             
-            return detected_mode
+            # Default to general conversation
+            return "general"
+            
         except Exception as e:
             print(f"❌ Router error: {e}")
             return "general"
@@ -802,6 +789,10 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
             username = state.get("username", "unknown")
             emotion = state.get("current_emotion", "neutral")
             summary_context = state.get("summary_context", "")
+            profile = state.get("user_profile", {})
+            
+            # Check if this is the first interaction
+            is_first_interaction = len(messages) == 1 and isinstance(messages[0], HumanMessage)
             
             # Build enhanced prompt
             base_prompt = self._get_combined_prompt(interaction_type)
@@ -815,6 +806,12 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
             if summary_context:
                 enhanced_prompt = f"{enhanced_prompt}\n\n{summary_context}"
                 print(f"🧠 Using enhanced timeline memory context for {username}")
+            
+            # Add first interaction context if needed
+            if is_first_interaction and profile:
+                child_name = profile.get("child_name", username)
+                interests = profile.get("interests", "fun things")
+                enhanced_prompt += f"\n\nFIRST INTERACTION CONTEXT:\nChild Name: {child_name}\nInterests: {interests}"
             
             # Build conversation for LLM
             conversation_text = ""
@@ -835,38 +832,11 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
             else:
                 ai_content = str(response)
             
-            ai_message = AIMessage(content=ai_content)
-            
-            # Update state with new message
-            updated_messages = messages + [ai_message]
-            new_state = dict(state)
-            new_state["messages"] = updated_messages
-            new_state["last_updated"] = datetime.utcnow().isoformat()
-            
-            # Update interaction count
-            new_state["interaction_count"] = new_state.get("interaction_count", 0) + 1
-            
-            # FAST RESPONSE: Check if timeline processing needed but DON'T do it here
-            if new_state["interaction_count"] % 20 == 0 and new_state["interaction_count"] > 0:
-                print(f"🔄 Timeline processing needed at {new_state['interaction_count']} interactions for {username}")
-                # Mark that timeline processing is needed
-                new_state["timeline_processing_needed"] = True
-                new_state["timeline_processing_range"] = f"{max(0, len(updated_messages) - 20)}-{len(updated_messages) - 1}"
-                
-                # TRIM MESSAGES immediately for storage efficiency
-                new_state["messages"] = updated_messages[-20:]
-                print(f"✂️ Trimmed to recent 20 messages for {username}")
-            else:
-                new_state["timeline_processing_needed"] = False
-            
-            return new_state
+            return {"messages": messages + [AIMessage(content=ai_content)]}
                 
         except Exception as e:
-            print(f"❌ LLM call error: {e}")
-            error_message = AIMessage(content="Sorry, I'm having trouble responding right now!")
-            new_state = dict(state)
-            new_state["messages"] = state.get("messages", []) + [error_message]
-            return new_state
+            print(f"❌ Error in _call_llm_with_enhanced_context: {e}")
+            return {"messages": messages + [AIMessage(content="I'm having trouble thinking right now!")]}
 
     def _process_timeline_async(self, username: str, messages: List[Any], range_str: str, existing_timeline: Dict[str, Any]):
         """Process timeline updates asynchronously in background."""
@@ -962,6 +932,7 @@ Respond with only the updated timeline story."""
         
         # Add nodes for each interaction type
         self.workflow.add_node("general", lambda state: self._call_llm_with_enhanced_context(state, "general"))
+        self.workflow.add_node("activities", lambda state: self._call_llm_with_enhanced_context(state, "activities"))
         self.workflow.add_node("game", lambda state: self._call_llm_with_enhanced_context(state, "game"))
         self.workflow.add_node("story", lambda state: self._call_llm_with_enhanced_context(state, "story"))
         self.workflow.add_node("learning", lambda state: self._call_llm_with_enhanced_context(state, "learning"))
@@ -971,6 +942,7 @@ Respond with only the updated timeline story."""
             enhance_and_route,
             {
                 "general": "general",
+                "activities": "activities",
                 "game": "game", 
                 "story": "story",
                 "learning": "learning"
@@ -979,6 +951,7 @@ Respond with only the updated timeline story."""
         
         # Add edges to END
         self.workflow.add_edge("general", END)
+        self.workflow.add_edge("activities", END)
         self.workflow.add_edge("game", END)
         self.workflow.add_edge("story", END)
         self.workflow.add_edge("learning", END)
@@ -1012,145 +985,138 @@ IMPORTANT: When users mention temporal words like "today", "yesterday", "now", e
             print(f"⚠️ Temporal context error: {e}")
             return base_prompt
 
-    def process_message(self, username: str, message: str, config: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Process user message through the enhanced workflow with proper state management."""
+    def _update_conversation_history(self, username: str, user_message: str, ai_response: str):
+        """Update conversation history in MongoDB."""
         try:
-            current_time = datetime.now(pytz.UTC)
-            thread_id = f"enhanced_{username}"
-            
-            # Configuration for LangGraph
-            config = config or {
-                "configurable": {
-                    "thread_id": thread_id
+            # Update in users collection
+            self.db.users.update_one(
+                {"username": username},
+                {
+                    "$push": {
+                        "chats": {
+                            "user_input": user_message,
+                            "ai_response": ai_response,
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    },
+                    "$inc": {"interaction_count": 1},
+                    "$set": {"updated_at": datetime.utcnow()}
                 }
-            }
-            
-            # Get relevant memories if vector memory is available
+            )
+        except Exception as e:
+            print(f"Error updating conversation history: {e}")
+
+    def _update_relevant_memories(self, username: str, user_message: str, ai_response: str):
+        """Update relevant memories in vector store."""
+        try:
             if self.vector_memory and self.vector_memory.vector_store:
-                relevant_memories = self.vector_memory.retrieve_relevant_memories(
-                    username, message, k=3
+                # Create a memory document
+                memory_text = f"User: {user_message}\nLumo: {ai_response}"
+                self.vector_memory.vector_store.add_texts(
+                    texts=[memory_text],
+                    metadatas=[{
+                        "username": username,
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "type": "conversation"
+                    }]
                 )
-            else:
-                relevant_memories = []
-            
-            # Check if we have existing state in checkpointer
-            existing_state = None
-            if self.checkpointer:
-                try:
-                    # Try to get existing state
-                    state_history = list(self.ai_app.get_state_history(config))
-                    if state_history:
-                        existing_state = state_history[0].values
-                        print(f"🔄 Retrieved existing state for {username}")
-                except Exception as e:
-                    print(f"⚠️ Could not retrieve existing state: {e}")
-            
-            # If no existing state, try to load from original collection for migration
-            if not existing_state:
-                existing_state = self._load_user_data_from_original_collection(username)
-                if existing_state:
-                    print(f"📚 Migrated user data from original collection for {username}")
-            
-            # Create or update state
-            if existing_state:
-                # Add new message to existing state
-                input_state = existing_state.copy()
-                input_state["messages"].append(HumanMessage(content=message))
-                input_state["last_updated"] = current_time.isoformat()
-                input_state["interaction_count"] += 1
-            else:
-                # Create new state
-                input_state = {
-                    "messages": [HumanMessage(content=message)],
-                    "username": username,
-                    "user_profile": {},
-                    "user_timezone": "UTC",
-                    "interaction_count": 1,
-                    "timeline_memory": {},
-                    "vector_memory_metadata": {},
-                    "current_mode": "general",
-                    "current_emotion": "neutral",
-                    "summary_context": None,
-                    "created_at": current_time.isoformat(),
-                    "last_updated": current_time.isoformat()
+        except Exception as e:
+            print(f"Error updating relevant memories: {e}")
+
+    def _save_to_mongodb(self, username: str, user_message: str, ai_response: str):
+        """Save conversation to MongoDB."""
+        try:
+            # Update in users collection
+            self.db.users.update_one(
+                {"username": username},
+                {
+                    "$push": {
+                        "chats": {
+                            "user_input": user_message,
+                            "ai_response": ai_response,
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    },
+                    "$inc": {"interaction_count": 1},
+                    "$set": {"updated_at": datetime.utcnow()}
                 }
-                print(f"📝 Created new state for {username}")
+            )
+        except Exception as e:
+            print(f"Error saving to MongoDB: {e}")
+
+    def process_message(self, message: str, username: str) -> str:
+        """Process a user message and return a response."""
+        try:
+            # Get user info from MongoDB
+            user_info = self.get_user_info(username)
+            if not user_info:
+                # Create new user if doesn't exist
+                user_info = {
+                    "username": username,
+                    "interaction_count": 0,
+                    "created_at": datetime.utcnow(),
+                    "storage_type": "mongodb"
+                }
+                self.db.users.insert_one(user_info)
             
-            # Add relevant memories to context
-            if relevant_memories:
-                memory_context = "\n".join(relevant_memories)
-                input_state["summary_context"] = memory_context
-                print(f"🧠 Added {len(relevant_memories)} relevant memories to context")
+            # Get user profile
+            profile = user_info.get("profile", {})
             
-            # Process through workflow
-            if self.checkpointer:
-                response_state = self.ai_app.invoke(input_state, config=config)
-                print(f"✅ State automatically saved to LangGraph checkpointer for {username}")
-                
-                # DUAL-WRITE: Sync to users collection for tracking and timeline access
-                self._sync_to_users_collection(response_state)
-            else:
-                response_state = self.ai_app.invoke(input_state)
-                print(f"⚠️ Processed without persistence for {username}")
-                
-                # Still sync to users collection if available for tracking
-                if self.users_collection is not None:
-                    self._sync_to_users_collection(response_state)
+            # Handle created_at date
+            created_at = user_info.get("created_at")
+            if isinstance(created_at, str):
+                try:
+                    created_at = datetime.fromisoformat(created_at)
+                except ValueError:
+                    created_at = datetime.utcnow()
+            elif not isinstance(created_at, datetime):
+                created_at = datetime.utcnow()
             
-            # Get the AI response from the final state
-            messages = response_state.get("messages", [])
-            if messages:
-                last_message = messages[-1]
-                if hasattr(last_message, 'content'):
-                    ai_response = last_message.content
-                else:
-                    ai_response = str(last_message)
-            else:
-                ai_response = "I'm sorry, I couldn't process your message properly."
-            
-            # PERFORMANCE BOOST: Handle timeline processing asynchronously AFTER response
-            if response_state.get("timeline_processing_needed", False):
-                # Get the full messages before trimming for timeline processing
-                full_messages = input_state["messages"] + [messages[-1]] if messages else input_state["messages"]
-                range_str = response_state.get("timeline_processing_range", "")
-                existing_timeline = response_state.get("timeline_memory", {})
-                
-                # Process timeline in background (would be truly async in production)
-                import threading
-                timeline_thread = threading.Thread(
-                    target=self._process_timeline_async,
-                    args=(username, full_messages, range_str, existing_timeline)
-                )
-                timeline_thread.daemon = True
-                timeline_thread.start()
-            
-            return {
-                "success": True,
-                "response": ai_response,
-                "mode": response_state.get("current_mode", "general"),
-                "emotion": response_state.get("current_emotion", "neutral"),
-                "interaction_count": response_state.get("interaction_count", 1),
-                "persistent": bool(self.checkpointer),
-                "vector_memories": len(relevant_memories),
-                "timestamp": current_time.isoformat()
+            # Create initial state
+            state = {
+                "messages": [],
+                "username": username,
+                "user_profile": profile,
+                "user_timezone": "UTC",
+                "interaction_count": user_info.get("interaction_count", 0),
+                "timeline_memory": {},
+                "vector_memory_metadata": {},
+                "current_mode": "general",
+                "current_emotion": "neutral",
+                "summary_context": None,
+                "created_at": created_at.isoformat(),
+                "last_updated": datetime.utcnow().isoformat()
             }
+            
+            # Get conversation history
+            if user_info.get("chats"):
+                for chat in user_info["chats"]:
+                    if "user_input" in chat:
+                        state["messages"].append(HumanMessage(content=chat["user_input"]))
+                    if "ai_response" in chat:
+                        state["messages"].append(AIMessage(content=chat["ai_response"]))
+            
+            # Add current message
+            state["messages"].append(HumanMessage(content=message))
+            
+            # Process through LangGraph workflow
+            config = {"configurable": {"thread_id": f"enhanced_{username}"}}
+            response_state = self.ai_app.invoke(state, config=config)
+            
+            # Get the response from the last AI message
+            response = response_state["messages"][-1].content
+            
+            # Update conversation history
+            self._update_conversation_history(username, message, response)
+            
+            # Update relevant memories
+            self._update_relevant_memories(username, message, response)
+            
+            return response
             
         except Exception as e:
-            print(f"❌ Error processing message for {username}: {e}")
-            import traceback
-            print(f"❌ Traceback: {traceback.format_exc()}")
-            
-            return {
-                "success": False,
-                "response": f"I encountered an error: {str(e)}",
-                "error": str(e),
-                "mode": "general",
-                "emotion": "neutral",
-                "interaction_count": 0,
-                "persistent": False,
-                "vector_memories": 0,
-                "timestamp": current_time.isoformat()
-            }
+            print(f"Error processing message: {e}")
+            return "I'm having trouble processing your message right now. Please try again!"
     
     def get_user_info(self, username: str) -> dict:
         """Get comprehensive user information from both storage sources."""
@@ -1167,32 +1133,11 @@ IMPORTANT: When users mention temporal words like "today", "yesterday", "now", e
                 "errors": []
             }
             
-            # Try to get state from LangGraph checkpointer (PRIMARY)
-            checkpointer_data = None
-            try:
-                state_history = list(self.ai_app.get_state_history(config))
-                if state_history:
-                    checkpointer_data = state_history[0].values
-                    result["storage_sources"].append("LangGraph MongoDB Checkpointer")
-                    result.update({
-                        "interaction_count": checkpointer_data.get("interaction_count", 0),
-                        "timeline_interactions": checkpointer_data.get("timeline_memory", {}).get("total_interactions", 0),
-                        "created_at": checkpointer_data.get("created_at"),
-                        "last_updated": checkpointer_data.get("last_updated"),
-                        "current_mode": checkpointer_data.get("current_mode", "general"),
-                        "current_emotion": checkpointer_data.get("current_emotion", "neutral"),
-                        "message_count": len(checkpointer_data.get("messages", [])),
-                        "has_timeline": bool(checkpointer_data.get("timeline_memory", {}).get("story"))
-                    })
-            except Exception as e:
-                result["errors"].append(f"LangGraph checkpointer error: {e}")
-            
-            # Try to get data from users collection (SECONDARY)
+            # Try to get data from users collection (PRIMARY)
             users_data = self._get_user_from_users_collection(username)
             if users_data:
                 result["storage_sources"].append("Users Collection")
                 result.update({
-                    "users_collection": {
                         "interaction_count": users_data.get("interaction_count", 0),
                         "chat_history_count": len(users_data.get("chats", [])),
                         "timeline_summary": bool(users_data.get("timeline_summaries", {}).get("story")),
@@ -1201,23 +1146,22 @@ IMPORTANT: When users mention temporal words like "today", "yesterday", "now", e
                         "created_at": users_data.get("created_at"),
                         "updated_at": users_data.get("updated_at"),
                         "storage_notes": users_data.get("storage_notes", {})
-                    }
                 })
-                
-                # If no checkpointer data, use users collection as fallback
-                if not checkpointer_data:
-                    result.update({
-                        "interaction_count": users_data.get("interaction_count", 0),
-                        "created_at": users_data.get("created_at"),
-                        "last_updated": users_data.get("updated_at"),
-                        "current_mode": users_data.get("current_mode", "general"),
-                        "current_emotion": users_data.get("current_emotion", "neutral"),
-                        "message_count": len(users_data.get("chats", [])),
-                        "fallback_source": "Users Collection"
-                    })
+            
+            # Try to get state from LangGraph checkpointer (SECONDARY)
+            checkpointer_data = None
+            try:
+                state_history = list(self.ai_app.get_state_history(config))
+                if state_history:
+                    checkpointer_data = state_history[0].values
+                    result["storage_sources"].append("LangGraph MongoDB Checkpointer")
+                    if not result.get("profile"):
+                        result["profile"] = checkpointer_data.get("user_profile", {})
+            except Exception as e:
+                result["errors"].append(f"LangGraph checkpointer error: {e}")
             
             # Try to get data from original collection for migration
-            if not checkpointer_data and not users_data:
+            if not users_data and not checkpointer_data:
                 original_data = self._load_user_data_from_original_collection(username)
                 if original_data:
                     result["storage_sources"].append("Original Collection (Migration Available)")
@@ -1230,12 +1174,14 @@ IMPORTANT: When users mention temporal words like "today", "yesterday", "now", e
                         "current_emotion": "neutral",
                         "migration_needed": True
                     })
+                    if not result.get("profile"):
+                        result["profile"] = original_data.get("user_profile", {})
             
             # Set final status
             if result["storage_sources"]:
                 result["status"] = "found"
                 result["persistent"] = True
-                result["primary_storage"] = "LangGraph MongoDB Checkpointer" if checkpointer_data else result["storage_sources"][0]
+                result["primary_storage"] = "Users Collection" if users_data else result["storage_sources"][0]
             else:
                 result["status"] = "new_user"
                 result["persistent"] = bool(self.checkpointer)
@@ -1405,24 +1351,19 @@ IMPORTANT: When users mention temporal words like "today", "yesterday", "now", e
         try:
             user_doc = self.users_collection.find_one(
                 {"_id": username},  # Query by _id for consistency
-                {"timeline_summaries": 1, "interaction_count": 1, "created_at": 1, "updated_at": 1}
+                {
+                    "profile": 1,
+                    "interaction_count": 1,
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "chats": 1,
+                    "timeline_summaries": 1
+                }
             )
             
-            if user_doc and user_doc.get("timeline_summaries"):
-                timeline = user_doc["timeline_summaries"]
-                return {
-                    "username": username,
-                    "story": timeline.get("story", ""),
-                    "total_interactions": timeline.get("total_interactions", 0),
-                    "summaries_processed": timeline.get("summaries_processed", 0),
-                    "first_interaction": timeline.get("first_interaction_time"),
-                    "last_interaction": timeline.get("last_interaction_time"),
-                    "created_at": timeline.get("created_at"),
-                    "updated_at": timeline.get("updated_at"),
-                    "user_interaction_count": user_doc.get("interaction_count", 0),
-                    "user_created": user_doc.get("created_at"),
-                    "user_updated": user_doc.get("updated_at")
-                }
+            if user_doc:
+                print(f"Debug - Found user doc: {user_doc}")
+                return user_doc
             
             return None
             
