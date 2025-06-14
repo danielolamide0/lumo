@@ -43,6 +43,21 @@ except ImportError as e:
         MongoDBSaver = None
         MONGODB_CHECKPOINTER_AVAILABLE = False
 
+# Test MongoDB connection
+try:
+    if MONGODB_URI:
+        client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+        client.server_info()  # Will raise an exception if connection fails
+        print(f"✅ Successfully connected to MongoDB at {MONGODB_URI}")
+        db = client[DATABASE_NAME]
+        print(f"✅ Successfully connected to database: {DATABASE_NAME}")
+    else:
+        print("⚠️ No MongoDB URI provided, will use SQLite fallback")
+except Exception as e:
+    print(f"⚠️ MongoDB connection error: {str(e)}")
+    print("⚠️ Falling back to SQLite")
+    MONGODB_CHECKPOINTER_AVAILABLE = False
+
 # Initialize SQLite database if MongoDB is not available
 if not MONGODB_CHECKPOINTER_AVAILABLE:
     try:
