@@ -7,11 +7,11 @@ python-dotenv
 streamlit==1.31.1
 pymongo==4.6.1
 chromadb==1.0.12
-langchain-chroma>=0.2.4
+langchain-chroma==0.2.4
 sentence-transformers==2.5.1
 pysqlite3-binary
 langchain-huggingface
 pytz
 torch>=2.7.0
 transformers>=4.38.2
-numpy>=1.24.0,<2.0.0
+numpy>=2.1.0,<=2.1.3
