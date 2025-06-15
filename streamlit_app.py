@@ -2,7 +2,7 @@ import streamlit as st
 import os
 from datetime import datetime
 import uuid
-from ai_toy_agent import EnhancedLumoAgent, CORE_IDENTITY_PROMPT, CHAT_FOUNDATION_PROMPT, MODE_SPECIFIC_PROMPTS
+from ai_toy_agent_hybrid import EnhancedLumoAgent, CORE_IDENTITY_PROMPT, CHAT_FOUNDATION_PROMPT, MODE_SPECIFIC_PROMPTS
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
@@ -49,7 +49,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def load_user_chat_history(username: str):
-    """Load user's previous chat history into Streamlit session."""
+    """Load user's previous chat history and profile from checkpointer."""
     st.session_state.messages = []
     
     if not st.session_state.get('agent') or not st.session_state.agent.checkpointer:
@@ -59,12 +59,12 @@ def load_user_chat_history(username: str):
     try:
         config = {"configurable": {"thread_id": f"enhanced_{username}"}}
         
-        # Get state history from LangGraph
-        state_history = list(st.session_state.agent.ai_app.get_state_history(config))
+        # Get state from LangGraph checkpointer
+        state = st.session_state.agent.ai_app.get_state(config).values
         
-        if state_history:
-            latest_state = state_history[0].values
-            messages = latest_state.get("messages", [])
+        if state:
+            messages = state.get("messages", [])
+            profile = state.get("user_profile", {})
             
             # Convert LangChain messages to Streamlit format
             chat_messages = []
@@ -76,25 +76,12 @@ def load_user_chat_history(username: str):
                         chat_messages.append({"role": "assistant", "content": msg.content})
             
             st.session_state.messages = chat_messages
-            print(f"📚 Loaded {len(chat_messages)} messages from LangGraph checkpointer for {username}")
+            st.session_state.user_info = st.session_state.agent.get_user_info(username)
+            print(f"📚 Loaded {len(chat_messages)} messages from checkpointer for {username}")
         else:
-            # Try to migrate from original collection
-            original_data = st.session_state.agent._load_user_data_from_original_collection(username)
-            if original_data:
-                messages = original_data.get("messages", [])
-                chat_messages = []
-                for msg in messages:
-                    if hasattr(msg, 'content'):
-                        if msg.__class__.__name__ == 'HumanMessage':
-                            chat_messages.append({"role": "user", "content": msg.content})
-                        elif msg.__class__.__name__ == 'AIMessage':
-                            chat_messages.append({"role": "assistant", "content": msg.content})
-                
-                st.session_state.messages = chat_messages
-                print(f"📚 Migrated {len(chat_messages)} messages from original collection for {username}")
-            else:
-                st.session_state.messages = []
-                print(f"📝 No conversation history found for {username}, starting fresh")
+            st.session_state.messages = []
+            st.session_state.user_info = st.session_state.agent.get_user_info(username)
+            print(f"📝 No conversation history found for {username}, starting fresh")
                 
     except Exception as e:
         print(f"⚠️ Error loading chat history: {e}")
@@ -105,11 +92,11 @@ def reset_conversation():
     st.session_state.messages = []
 
 def check_user_chat_count(username: str) -> int:
-    """Check the number of chats a user has in the database."""
+    """Check the number of chats a user has in the users collection."""
     try:
         mongo_client = MongoClient(MONGODB_URI)
         db = mongo_client[DATABASE_NAME]
-        user = db.users.find_one({"username": username})
+        user = db.users.find_one({"_id": username})
         if user and "chats" in user:
             return len(user["chats"])
         return 0
@@ -120,7 +107,7 @@ def check_user_chat_count(username: str) -> int:
 def authenticate_user(username: str):
     """Authenticate user and load their data."""
     try:
-        # Get user info using the enhanced agent
+        # Get user info from checkpointer
         user_info = st.session_state.agent.get_user_info(username)
         
         # Store in session
@@ -130,11 +117,11 @@ def authenticate_user(username: str):
         
         # Check if user needs parental setup
         chat_count = check_user_chat_count(username)
-        if chat_count == 0:
+        profile = user_info.get("profile", {})
+        if chat_count == 0 or not profile.get("parental_setup_complete", False):
             st.session_state.needs_parental_setup = True
         else:
             st.session_state.needs_parental_setup = False
-            # Load user's previous chat history automatically on login
             load_user_chat_history(username)
         
         return True
@@ -182,7 +169,7 @@ if not st.session_state.authenticated:
             else:
                 st.warning("⚠️ Memory-only mode (no persistence)")
             
-            if st.session_state.agent.vector_memory and st.session_state.agent.vector_memory.vector_store:
+            if st.session_state.agent.vector_memory and st.session_state.agent.vector_memory.collection:
                 st.success("✅ Vector Memory (ChromaDB): Active")
             else:
                 st.warning("⚠️ Vector memory not available")
@@ -222,13 +209,13 @@ else:
                     # Create profile object
                     profile = {
                         "child_name": child_name,
-                        "date_of_birth": date_of_birth_datetime,  # Using datetime instead of date
+                        "date_of_birth": date_of_birth_datetime.isoformat(),
                         "age": age,
-                        "interests": interests_text,  # Store formatted interests text
+                        "interests": interests_text,
                         "topics_to_avoid": topics_to_avoid,
                         "parental_setup_complete": True,
-                        "created_at": datetime.utcnow(),
-                        "updated_at": datetime.utcnow(),
+                        "created_at": datetime.utcnow().isoformat(),
+                        "updated_at": datetime.utcnow().isoformat(),
                         "interaction_count": 0,
                         "current_mode": "general",
                         "current_emotion": "neutral",
@@ -236,38 +223,21 @@ else:
                         "user_timezone": "UTC"
                     }
                     
-                    # Save to MongoDB
+                    # Save to checkpointer
                     try:
-                        mongo_client = MongoClient(MONGODB_URI)
-                        db = mongo_client[DATABASE_NAME]
-                        
-                        # Update user document with profile
-                        db.users.update_one(
-                            {"username": st.session_state.username},
-                            {
-                                "$set": {
-                                    "profile": profile,
-                                    "interaction_count": 0,
-                                    "created_at": datetime.utcnow(),
-                                    "updated_at": datetime.utcnow()
-                                }
-                            },
-                            upsert=True
-                        )
-                        
-                        # Print debug info
-                        print(f"Debug - Profile being saved: {profile}")
-                        print(f"Debug - Interests being saved: {profile.get('interests')}")
-                        
-                        # Update session state
-                        st.session_state.needs_parental_setup = False
-                        st.session_state.user_info = profile
-                        
-                        # Get first message from Lumo
-                        initial_message = st.session_state.agent.process_message("", st.session_state.username)
-                        st.session_state.messages = [{"role": "assistant", "content": initial_message}]
-                        
-                        st.rerun()
+                        result = st.session_state.agent.update_user_profile(st.session_state.username, profile)
+                        if result.get("success"):
+                            print(f"Debug - Profile saved for {st.session_state.username}: {profile}")
+                            st.session_state.user_info = st.session_state.agent.get_user_info(st.session_state.username)
+                            st.session_state.needs_parental_setup = False
+                            
+                            # Get initial message from Lumo
+                            initial_message = st.session_state.agent.process_message("", st.session_state.username)
+                            st.session_state.messages = [{"role": "assistant", "content": initial_message}]
+                            
+                            st.rerun()
+                        else:
+                            st.error(f"Error saving setup: {result.get('error')}")
                     except Exception as e:
                         st.error(f"Error saving setup: {e}")
                 else:
@@ -291,7 +261,6 @@ else:
         
         # Restart Lumo button
         if st.button("🔄 Restart Lumo", use_container_width=True, help="Restart Lumo with updated prompts"):
-            # Clear analysis cache and reinitialize agent with current prompts
             st.session_state.agent = EnhancedLumoAgent(
                 core_identity=st.session_state.core_identity,
                 chat=st.session_state.chat,
@@ -300,7 +269,6 @@ else:
             )
             if st.session_state.agent.llm:
                 st.success("✅ Lumo restarted with updated prompts!")
-                # Clear messages and reload chat history
                 if st.session_state.username:
                     load_user_chat_history(st.session_state.username)
                 st.rerun()
@@ -323,11 +291,13 @@ else:
             st.write(f"**Interactions:** {st.session_state.user_info.get('interaction_count', 0)}")
             if st.session_state.user_info.get("created_at"):
                 created_at = st.session_state.user_info.get('created_at')
-                if isinstance(created_at, datetime):
-                    st.write(f"**Created:** {created_at.strftime('%Y-%m-%d')}")
-                else:
-                    st.write(f"**Created:** {created_at}")
+                st.write(f"**Created:** {created_at}")
             st.write(f"**Storage:** {st.session_state.user_info.get('storage_type', 'Unknown')}")
+            profile = st.session_state.user_info.get('profile', {})
+            if profile:
+                st.write(f"**Child's Name:** {profile.get('child_name', 'Not set')}")
+                st.write(f"**Interests:** {profile.get('interests', 'Not set')}")
+                st.write(f"**Topics to Avoid:** {profile.get('topics_to_avoid', 'None')}")
         
         # Data management
         st.subheader("🗂️ Data Management")
@@ -342,11 +312,17 @@ else:
                         st.error(result.get("error", "Failed to delete data"))
                 except Exception as e:
                     st.error(f"Error deleting data: {e}")
+        
+        # View checkpointer data
+        st.subheader("🔍 View Checkpointer Data")
+        if st.button("View Raw Checkpointer Data", help="Preview checkpointer state"):
+            user_info = st.session_state.agent.get_user_info(st.session_state.username)
+            with st.expander("Checkpointer State"):
+                st.json(user_info)
 
-# Enhanced Configuration Section - RESTORED PROMPT REFINEMENT
+# Enhanced Configuration Section
 with st.expander("⚙️ Configure Lumo's Architecture (Core + Chat + Specialized Modes)", expanded=False):
     
-    # Create tabs for different prompt types
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "🧠 Core Identity", 
         "💬 Chat (Shared)",
@@ -470,7 +446,7 @@ with st.expander("⚙️ Configure Lumo's Architecture (Core + Chat + Specialize
         st.success("**Architecture: Core Identity + Chat (Shared) + Specialized Mode**")
 
 # Chat interface
-st.markdown("### �� Chat with Lumo")
+st.markdown("### 💬 Chat with Lumo")
 
 # Display chat messages
 for message in st.session_state.messages:
@@ -495,4 +471,4 @@ if prompt := st.chat_input("Type your message here..."):
         
     except Exception as e:
         st.error(f"Error: {str(e)}")
-        print(f"Error in chat: {e}") 
+        print(f"Error in chat: {e}")
