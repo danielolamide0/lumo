@@ -1,4 +1,3 @@
 build-essential
 sqlite3
 libsqlite3-dev
-pysqlite3-binary
