@@ -1,4 +1,4 @@
-# SQLite fix for ChromaDB
+# SQLite fix for ChromaDB compatibility
 import sys
 try:
     __import__('pysqlite3')
