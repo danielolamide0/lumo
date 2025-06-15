@@ -1,0 +1,125 @@
+# 🔒 Lumo AI - Security & Privacy Protection
+
+# === SENSITIVE FILES (NEVER COMMIT) ===
+# Environment variables and secrets
+.env
+.env.local
+.env.production
+.env.staging
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# API Keys and credentials
+*.key
+*.pem
+*.p12
+credentials.json
+config.json
+
+# === DATABASE & MEMORY FILES ===
+# ChromaDB vector storage (user data)
+chroma_lumo_memory/
+chroma_lumo_timeline/
+*.db
+*.sqlite
+*.sqlite3
+
+# MongoDB dumps
+*.bson
+mongo_dumps/
+
+# === PYTHON ENVIRONMENT ===
+# Virtual environments
+venv/
+env/
+lumo_env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# === DEVELOPMENT FILES ===
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing and debugging
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# === TEMPORARY & LOG FILES ===
+# Application logs
+*.log
+logs/
+debug_*.py
+test_*.py
+temp_*.py
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+temp/
+
+# === DEPLOYMENT & BUILD FILES ===
+# Docker
+.dockerignore
+Dockerfile.local
+
+# Cloud deployment
+.gcloudignore
+.azure/
+.aws/
+
+# === USER DATA PROTECTION ===
+# Any files containing user conversations or data
+user_data/
+conversations/
+chat_logs/
+timeline_summaries/
+backups/
+
+# === SYSTEM FILES ===
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# === NOTES & DRAFTS ===
+# Development notes and TODO files
+TODO.md
+NOTES.md
+DRAFT_*.md
+notes/
+drafts/ 

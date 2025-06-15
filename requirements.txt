@@ -1,0 +1,16 @@
+langchain-core==0.3.65
+langsmith==0.3.45
+langgraph==0.4.3
+langchain-google-genai
+google-generativeai
+python-dotenv
+streamlit==1.31.1
+pymongo>=4.10,<4.12
+chromadb==1.0.12
+langchain-chroma>=0.2.4
+sentence-transformers==2.5.1
+langchain-huggingface
+pytz
+torch==2.2.2
+transformers>=4.38.2
+numpy==1.26.4
