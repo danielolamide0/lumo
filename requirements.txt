@@ -14,3 +14,4 @@ pytz
 torch>=2.5.0
 transformers>=4.38.2
 numpy>=1.24.0
+pysqlite3-binary
