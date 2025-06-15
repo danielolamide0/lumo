@@ -1,6 +1,8 @@
 langchain-core==0.3.65
 langsmith==0.3.45
 langgraph==0.4.3
+langgraph-checkpoint-mongodb
+langgraph-checkpoint-sqlite
 langchain-google-genai
 google-generativeai
 python-dotenv
@@ -11,7 +13,7 @@ langchain-chroma>=0.2.4
 sentence-transformers==3.3.1
 langchain-huggingface
 pytz
-torch>=2.5.0
-transformers>=4.38.2
+torch==2.5.1
+transformers==4.45.2
 numpy>=1.24.0
 pysqlite3-binary
