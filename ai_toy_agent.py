@@ -1,3 +1,6 @@
+import pysqlite3
+import sys
+sys.modules['sqlite3'] = pysqlite3
 import os
 import uuid
 import streamlit as st
@@ -12,7 +15,6 @@ import asyncio
 import re
 import chromadb
 from chromadb.utils import embedding_functions
-
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
