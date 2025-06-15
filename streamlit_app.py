@@ -2,7 +2,7 @@ import streamlit as st
 import os
 from datetime import datetime
 import uuid
-from ai_toy_agent_hybrid import EnhancedLumoAgent, CORE_IDENTITY_PROMPT, CHAT_FOUNDATION_PROMPT, MODE_SPECIFIC_PROMPTS
+from ai_toy_agent import EnhancedLumoAgent, CORE_IDENTITY_PROMPT, CHAT_FOUNDATION_PROMPT, MODE_SPECIFIC_PROMPTS
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
@@ -432,7 +432,7 @@ with st.expander("⚙️ Configure Lumo's Architecture (Core + Chat + Specialize
             key="combined_preview_selector"
         )
         
-        combined_prompt = st.session_state.agent.get_combined_prompt(mode_selector)
+        combined_prompt = st.session_state.agent._get_combined_prompt(mode_selector)
         
         st.text_area(
             f"Combined Prompt for {mode_selector.title()} Mode:",
