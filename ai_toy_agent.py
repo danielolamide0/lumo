@@ -17,6 +17,12 @@ import pytz
 import json
 import pickle
 import base64
+import logging
+import asyncio
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -30,68 +36,51 @@ from pymongo.errors import ConnectionFailure, OperationFailure
 # Try to import LangGraph MongoDB checkpointer, fallback to memory if unavailable
 try:
     from langgraph.checkpoint.mongodb import MongoDBSaver
-    print("✅ Successfully imported MongoDBSaver from langgraph.checkpoint.mongodb")
+    logger.info("Successfully imported MongoDBSaver")
     MONGODB_CHECKPOINTER_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️ MongoDB checkpointer import error: {str(e)}")
+    logger.warning(f"MongoDB checkpointer import error: {e}")
     try:
         from langgraph.checkpoint.sqlite import SqliteSaver
-        print("✅ Using SQLite checkpointer as fallback")
+        logger.info("Using SQLite checkpointer as fallback")
         MongoDBSaver = SqliteSaver
         MONGODB_CHECKPOINTER_AVAILABLE = True
     except ImportError as e:
-        print(f"⚠️ SQLite checkpointer import error: {str(e)}")
+        logger.warning(f"SQLite checkpointer import error: {e}")
         MongoDBSaver = None
         MONGODB_CHECKPOINTER_AVAILABLE = False
 
 # --- Configuration ---
-# Set defaults first
-MODEL_NAME = "gemini-2.5-flash-preview-04-17"
-GEMINI_API_KEY = None
-MONGODB_URI = None 
-DATABASE_NAME = "LUMO"
+MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-flash-preview-04-17")
+GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
+MONGODB_URI = os.getenv("MONGODB_URI")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "LUMO")
 
 # Configuration loading with proper fallback chain
 try:
-    # Try to load from environment first
-    GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
-    MONGODB_URI = os.getenv("MONGODB_URI")
-    DATABASE_NAME = os.getenv("DATABASE_NAME", "LUMO")
-    MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-flash-preview-04-17")
-    
-    # If no environment variables, try Streamlit secrets
     if not GEMINI_API_KEY:
-        try:
-            import streamlit as st
-            GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-            MODEL_NAME = st.secrets.get("MODEL_NAME", "gemini-2.5-flash-preview-04-17")
-            MONGODB_URI = st.secrets.get("MONGODB_URI")
-            DATABASE_NAME = st.secrets.get("DATABASE_NAME", "LUMO")
-        except:
-            # Keep the defaults we set above
-            pass
-            
+        GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
+        MODEL_NAME = st.secrets.get("MODEL_NAME", MODEL_NAME)
+        MONGODB_URI = st.secrets.get("MONGODB_URI")
+        DATABASE_NAME = st.secrets.get("DATABASE_NAME", DATABASE_NAME)
 except Exception as e:
-    # Keep the defaults we set above
-    print(f"Warning: Could not load API configuration: {e}")
-    if 'MODEL_NAME' not in globals():
-        MODEL_NAME = "gemini-2.5-flash-preview-04-17"
+    logger.warning(f"Could not load API configuration: {e}")
 
-print(f"✅ Configuration loaded: MODEL_NAME={MODEL_NAME}, DATABASE_NAME={DATABASE_NAME}")
+logger.info(f"Configuration loaded: MODEL_NAME={MODEL_NAME}, DATABASE_NAME={DATABASE_NAME}")
 
 # Test MongoDB connection
 try:
     if MONGODB_URI:
         client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
-        client.server_info()  # Will raise an exception if connection fails
-        print(f"✅ Successfully connected to MongoDB at {MONGODB_URI}")
+        client.server_info()
+        logger.info(f"Successfully connected to MongoDB at {MONGODB_URI}")
         db = client[DATABASE_NAME]
-        print(f"✅ Successfully connected to database: {DATABASE_NAME}")
+        logger.info(f"Connected to database: {DATABASE_NAME}")
     else:
-        print("⚠️ No MongoDB URI provided, will use SQLite fallback")
+        logger.warning("No MongoDB URI provided, will use SQLite fallback")
 except Exception as e:
-    print(f"⚠️ MongoDB connection error: {str(e)}")
-    print("⚠️ Falling back to SQLite")
+    logger.error(f"MongoDB connection error: {e}")
+    logger.warning("Falling back to SQLite")
     MONGODB_CHECKPOINTER_AVAILABLE = False
 
 # Initialize SQLite database if MongoDB is not available
@@ -110,9 +99,9 @@ if not MONGODB_CHECKPOINTER_AVAILABLE:
         ''')
         conn.commit()
         conn.close()
-        print("✅ SQLite database initialized successfully")
+        logger.info("SQLite database initialized")
     except Exception as e:
-        print(f"⚠️ SQLite initialization error: {str(e)}")
+        logger.error(f"SQLite initialization error: {e}")
 
 # Enhanced Memory System Imports
 import chromadb
@@ -162,9 +151,7 @@ SPECIALIZED MODES:
 - Learning Mode: When they ask questions, provide child-friendly explanations
 - General Mode: For casual conversation and emotional support"""
 
-CHAT_FOUNDATION_PROMPT = """
-
-"""
+CHAT_FOUNDATION_PROMPT = ""
 
 INTENT_ANALYSIS_PROMPT = """
 You are an expert at analyzing children's messages to understand what type of specialized activity they want.
@@ -235,7 +222,6 @@ SPECIALIZED BEHAVIOR:
 As I mentioned in the main prompt, children can interact and engage with you through five main modes. One of the ways a child can interact with you is through story. You normally ask the child what they would like to do. The following information is for when a child has expressed interest in hearing a story
 
 # Overview
-
 As outlined in the main prompt, children engage with you through five primary modes of interaction. One of these key modes is Story
 
 When a child expresses interest in a story, you must first clarify their preference: "Would you like me to tell you a story, or would you like to make one up together?"
@@ -246,21 +232,14 @@ There are three distinct types of story interaction:
 3. Story play - mini-games and creative challenges embedded naturally within the story
 
 # Storytelling (child as learner)
-
 In this mode, the child simply wants to hear a story
-
 Ask the child if they want to hear about a particular story or if you should pick one. You can say something along the lines of: "Yay! Would you like to choose what the story's about, or should I make one up all by myself?!"
-
 If they say you choose, then give them 3 fun made up story ideas so that they can select what sounds interesting
 
 # Co-storytelling (creating together)
-
 This is a form of super interactive storytelling where you and the child are co-authors, creating stories together
-
 Ask the child if they want to hear about anything in particular or if you should just begin
-
 Begin telling a story starting with a vivid opening and pause and ask the child what they think happens next every 30 seconds. You start a story, then pause for the child to fill in what happens next in the story using their imagination. This is so that the child is fully immersed in the story and to help children create their own stories
-
 Only ask questions after you tell part of the story. Their answer to your question should shape the next part of the story you tell. Try to tell part of the story for 30 seconds and then ask a question. But, limit to one follow-up question after you tell part of the story
 
 Interactive pattern:
@@ -270,44 +249,28 @@ Interactive pattern:
 4. Repeat
 
 # Story play
-
 These are short, playful challenges that happen within a story. They could involve movement, sound, guessing, memory, or creativity, designed for 2–8-year-olds. Lumo introduces them as natural extensions of the plot
-
 You integrate these short, engaging mini-games into interactive stories to promote active listening, movement, creativity, and emotional expression. These should feel like natural parts of the story, not interruptions
-
 Some examples of story play elements:
 1. Movement (e.g., "Can you hop like the bunny?")
 2. Sound (e.g., "Let's roar like the dragon!")
 3. Imagination (e.g., "What spell should we cast?")
 4. Guessing (e.g., "What do you think was behind the magic door?")
-
 Do not limit yourself to these examples. These are just examples. Don't rely on fixed phrases. Aim to vary your responses and keep them simple, real, and context-aware
-
 IMPORTANT: Only introduce a play element if it makes sense in the story
 IMPORTANT: If a child doesn't want to play along, then just continue telling the story without play
 
 # Storytelling guidelines
-
 If a child has said they would like to hear a story, always confirm if they would like to just hear a story or if they want to make one up together. This ensures the experience matches their mood and intention
-
 Remember that children's stories are simple, emotionally resonant, and rich in imagination. They should spark wonder, feel magical or cozy, and reflect the emotional world of a child—big feelings, small adventures, and a sense of discovery. The language should be clear, warm, and expressive, often rhythmic or playful, using age-appropriate vocabulary without being condescending. 
-
 Every story should have a clear structure: a beginning that sets the scene, a middle with a small problem or journey, and an ending that resolves gently and often with a sense of reassurance, learning, or delight
-
 Characters should be relatable (animals, toys, children, or magical beings) and express clear emotions and motivations. Dialogue should feel natural and engaging. The tone should always be safe, encouraging, and emotionally attuned—never sarcastic, scary, or overwhelming
-
 Stories should either reflect the child's interests or introduce something new in a way that feels exciting and inviting. Above all, storytelling should feel like a shared moment of connection and intimate—like a caring parent reading a story just for the child listening
-
 IMPORTANT: If a child says they want you to tell a story rather than make one up together, do not make it interactive. This usually means the child wants to listen quietly and isn't in the mood for back-and-forth. Only turn the story into a collaborative, interactive experience—asking the child what happens next—when they've clearly said they want to create a story with you
-
 IMPORTANT: Keep the full story 3-5 minutes long so the child doesn't get bored
-
 IMPORTANT: If it's an interactive story, aim to ask around 10 playful, open-ended questions to keep the child involved
-
 IMPORTANT: Always ask the child if they want to continue or end the story before closing the story
-
 Stories should be age appropriate
-
 Stories should align with the child's interest or chosen topic
 """,
 
@@ -315,7 +278,6 @@ Stories should align with the child's interest or chosen topic
 CURRENT MODE: Educational Exploration
 FOCUS: Learning and discovery through engaging dialogue
 TEACHING APPROACH: Make learning conversational, fun, and interactive
-
 SPECIALIZED BEHAVIOR:
 - Start by understanding what they want to learn or are curious about
 - Break down complex topics into child-friendly explanations
@@ -327,33 +289,20 @@ SPECIALIZED BEHAVIOR:
 
 # Enhanced State Management
 class LumoState(TypedDict):
-    """Enhanced state that stores only essential data in LangGraph checkpointer."""
-    # Core conversation - ONLY RECENT 20 MESSAGES
     messages: List[Any]
-    
-    # User profile and metadata
     username: str
     user_profile: Dict[str, Any]
     user_timezone: Optional[str]
-    
-    # Memory tracking
     interaction_count: int
-    # REMOVED: conversation_summaries - not stored permanently
-    timeline_memory: Dict[str, Any]  # ONLY timeline summary stored
+    timeline_memory: Dict[str, Any]
     vector_memory_metadata: Dict[str, Any]
-    
-    # Current context
     current_mode: str
     current_emotion: str
     summary_context: Optional[str]
-    
-    # System metadata
     created_at: str
     last_updated: str
 
 class VectorMemoryManager:
-    """Manages ChromaDB vector memory for timeline summaries only."""
-    
     def __init__(self, collection_name: str = "lumo_timeline_memory"):
         self.collection_name = collection_name
         self.vector_store = None
@@ -361,41 +310,29 @@ class VectorMemoryManager:
         self._initialize_vector_store()
     
     def _initialize_vector_store(self):
-        """Initialize ChromaDB vector store."""
         if self._initialized:
             return
-            
         try:
-            print("🧠 Initializing vector store with HuggingFace embeddings...")
+            logger.info("Initializing vector store with HuggingFace embeddings...")
             embeddings = HuggingFaceEmbeddings(
                 model_name="all-MiniLM-L6-v2",
                 model_kwargs={'device': 'cpu'},
                 encode_kwargs={'normalize_embeddings': True}
             )
-            
-            print("📚 Creating ChromaDB collection...")
             self.vector_store = Chroma(
                 collection_name=self.collection_name,
                 embedding_function=embeddings,
                 persist_directory="./chroma_lumo_timeline"
             )
             self._initialized = True
-            print("✅ Vector memory initialized for timeline summaries only")
-            
+            logger.info("Vector memory initialized for timeline summaries")
         except Exception as e:
-            print(f"⚠️ Vector memory initialization failed: {str(e)}")
-            print(f"⚠️ Error type: {type(e).__name__}")
-            import traceback
-            print(f"⚠️ Traceback: {traceback.format_exc()}")
-            self.vector_store = None
-            self._initialized = False
+            logger.error(f"Vector memory initialization failed: {e}")
     
     def store_timeline_memory(self, username: str, timeline: Dict[str, Any]):
-        """Store timeline memory in vector database."""
         if not self._initialized or not self.vector_store:
-            print("⚠️ Vector store not initialized, skipping timeline storage")
+            logger.warning("Vector store not initialized, skipping timeline storage")
             return
-            
         try:
             document = Document(
                 page_content=timeline.get('story', ''),
@@ -407,42 +344,32 @@ class VectorMemoryManager:
                 }
             )
             self.vector_store.add_documents([document])
-            print(f"📚 Stored timeline memory in vector DB for {username}")
+            logger.info(f"Stored timeline memory in vector DB for {username}")
         except Exception as e:
-            print(f"⚠️ Error storing timeline in vector DB: {e}")
+            logger.error(f"Error storing timeline in vector DB: {e}")
     
     def retrieve_relevant_memories(self, username: str, query: str, k: int = 3) -> List[str]:
-        """Retrieve relevant timeline memories for a user."""
         if not self.vector_store:
             return []
-        
         try:
             docs = self.vector_store.similarity_search(
                 query,
                 k=k,
                 filter={"$and": [{"username": username}, {"type": "timeline_memory"}]}
             )
-            
-            memories = []
-            for doc in docs:
-                content = doc.page_content
-                memories.append(f"[TIMELINE]: {content}")
-            
+            memories = [f"[TIMELINE]: {doc.page_content}" for doc in docs]
             return memories
-            
         except Exception as e:
-            print(f"⚠️ Error retrieving memories: {e}")
+            logger.error(f"Error retrieving memories: {e}")
             return []
     
     def get_user_timeline_count(self, username: str) -> int:
-        """Get count of stored timeline memories for a user."""
         if not self.vector_store:
             return 0
-            
         try:
             docs = self.vector_store.similarity_search(
                 "",
-                k=100,  # Get many to count
+                k=100,
                 filter={"$and": [{"username": username}, {"type": "timeline_memory"}]}
             )
             return len(docs)
@@ -450,49 +377,9 @@ class VectorMemoryManager:
             return 0
 
 class EnhancedLumoAgent:
-    """Enhanced AI Agent using LangGraph for state management with MongoDB checkpointer + dual user collection writes."""
-    
-    def __init__(self, 
-                 core_identity=CORE_IDENTITY_PROMPT, 
-                 chat=CHAT_FOUNDATION_PROMPT,
-                 mode_prompts=None,
-                 model_name=MODEL_NAME,
-                 use_mongodb_checkpointer=True):
-        """Initialize the AI toy agent."""
-        self.core_identity = """You are Lumo, a friendly AI companion for children.
-
-CONVERSATION FLOW:
-1. For new users (when chat history is empty):
-   - Greet them warmly using their name
-   - Express excitement about meeting them
-   - Naturally mention their interests in your own words
-   - Ask if they'd like to hear about the fun activities you can do together
-   - Keep the tone enthusiastic but natural
-
-2. For all other messages:
-   - Continue the conversation naturally
-   - NEVER repeat the initial greeting
-   - Stay focused on the current topic
-   - Keep responses engaging and age-appropriate
-   - If they say "yes" to hearing about activities, immediately list some fun options
-   - If they choose an activity (like "stories"), immediately engage in that activity
-
-IMPORTANT RULES:
-- NEVER repeat the initial greeting message
-- NEVER use emojis
-- NEVER mention age or date of birth
-- Keep responses short and engaging
-- Use natural, conversational language
-- Be warm and friendly
-- Reference their interests when relevant
-- Avoid the topics they want to avoid
-- If they choose an activity, start it immediately without asking again
-
-SPECIALIZED MODES:
-- Story Mode: When they want stories, immediately start telling or creating a story
-- Game Mode: When they want to play, suggest a specific game to start
-- Learning Mode: When they ask questions, provide child-friendly explanations
-- General Mode: For casual conversation and emotional support"""
+    def __init__(self, core_identity=CORE_IDENTITY_PROMPT, chat=CHAT_FOUNDATION_PROMPT,
+                 mode_prompts=None, model_name=MODEL_NAME, use_mongodb_checkpointer=True):
+        self.core_identity = core_identity
         self.chat = chat
         self.mode_prompts = mode_prompts or MODE_SPECIFIC_PROMPTS.copy()
         self.model_name = model_name
@@ -504,7 +391,7 @@ SPECIALIZED MODES:
         # Cache for AI analysis
         self._analysis_cache = {}
         
-        # Initialize MongoDB client for dual-write to users collection
+        # Initialize MongoDB client
         self.mongo_client = None
         self.db = None
         self.users_collection = None
@@ -514,27 +401,17 @@ SPECIALIZED MODES:
                 self.db = self.mongo_client[DATABASE_NAME]
                 self.users_collection = self.db.users
             except Exception as e:
-                print(f"❌ Error connecting to MongoDB: {e}")
+                logger.error(f"Error connecting to MongoDB: {e}")
         
-        # Initialize LangGraph components
+        # Initialize LangGraph checkpointer
         if MONGODB_CHECKPOINTER_AVAILABLE:
             try:
-                print(f"🔌 Attempting to connect to MongoDB at: {MONGODB_URI}")
                 checkpointer_client = MongoClient(MONGODB_URI)
-                # Test the connection
                 checkpointer_client.admin.command('ping')
-                print("✅ MongoDB connection test successful")
-                
-                self.checkpointer = MongoDBSaver(
-                    client=checkpointer_client,
-                    db_name=DATABASE_NAME
-                )
-                print("✅ LangGraph MongoDB checkpointer initialized")
+                self.checkpointer = MongoDBSaver(client=checkpointer_client, db_name=DATABASE_NAME)
+                logger.info("LangGraph MongoDB checkpointer initialized")
             except Exception as e:
-                print(f"❌ Failed to initialize MongoDB checkpointer: {str(e)}")
-                print(f"❌ Error type: {type(e).__name__}")
-                import traceback
-                print(f"❌ Traceback: {traceback.format_exc()}")
+                logger.error(f"Failed to initialize MongoDB checkpointer: {e}")
                 self.checkpointer = None
         else:
             self.checkpointer = None
@@ -545,71 +422,17 @@ SPECIALIZED MODES:
         
         if self.checkpointer:
             self.ai_app = self.workflow.compile(checkpointer=self.checkpointer)
-            print("✅ LangGraph workflow compiled with MongoDB persistence")
+            logger.info("LangGraph workflow compiled with MongoDB persistence")
         else:
             self.ai_app = self.workflow.compile()
-            print("⚠️ LangGraph workflow compiled without persistence")
+            logger.warning("LangGraph workflow compiled without persistence")
         
-        print("✅ Enhanced Lumo Agent fully initialized with LangGraph checkpointer!")
+        logger.info("Enhanced Lumo Agent fully initialized")
     
-    def _load_user_data_from_original_collection(self, username: str) -> Optional[Dict[str, Any]]:
-        """Load user data from the original users collection for migration."""
-        if not MONGODB_URI:
-            return None
-            
-        try:
-            client = MongoClient(MONGODB_URI)
-            db = client[DATABASE_NAME]
-            users_collection = db["users"]
-            
-            user_doc = users_collection.find_one({"username": username})
-            if user_doc:
-                print(f"📚 Found user data in original collection for {username}")
-                
-                # Convert original chat format to LangGraph messages
-                messages = []
-                chats = user_doc.get("chats", [])
-                
-                for chat in chats:
-                    if isinstance(chat, dict):
-                        if "user_input" in chat:
-                            messages.append(HumanMessage(content=chat["user_input"]))
-                        if "ai_response" in chat:
-                            messages.append(AIMessage(content=chat["ai_response"]))
-                
-                # Store timeline in vector memory
-                timeline = user_doc.get("timeline_summaries", {})
-                if timeline and isinstance(timeline, dict):
-                    self.vector_memory.store_timeline_memory(username, timeline)
-                
-                return {
-                    "messages": messages,
-                    "username": username,
-                    "user_profile": user_doc.get("profile", {}),
-                    "user_timezone": "UTC",
-                    "interaction_count": user_doc.get("interaction_count", len(chats)),
-                    "timeline_memory": timeline,
-                    "vector_memory_metadata": {"migrated": True},
-                    "current_mode": "general",
-                    "current_emotion": "neutral",
-                    "summary_context": None,
-                    "created_at": user_doc.get("created_at", datetime.utcnow()).isoformat() if hasattr(user_doc.get("created_at"), "isoformat") else str(user_doc.get("created_at", datetime.utcnow())),
-                    "last_updated": datetime.utcnow().isoformat()
-                }
-            
-            client.close()
-            return None
-            
-        except Exception as e:
-            print(f"❌ Error loading user data: {e}")
-            return None
-
     def _initialize_llm(self):
-        """Initialize the Google Generative AI LLM."""
         if not GEMINI_API_KEY:
-            print("❌ No API key found. Please set GOOGLE_API_KEY in environment or Streamlit secrets.")
+            logger.error("No API key found")
             return None
-            
         try:
             llm = ChatGoogleGenerativeAI(
                 model=self.model_name,
@@ -617,18 +440,16 @@ SPECIALIZED MODES:
                 google_api_key=GEMINI_API_KEY
             )
             test_response = llm.invoke("Hello!")
-            print("✅ LLM initialized and tested successfully.")
+            logger.info("LLM initialized and tested successfully")
             return llm
         except Exception as e:
-            print(f"❌ Error initializing LLM: {e}")
+            logger.error(f"Error initializing LLM: {e}")
             return None
 
     def _ai_analyze_intent_and_emotion(self, user_message: str) -> dict:
-        """Use AI to analyze user intent and emotional state."""
         if not user_message or not user_message.strip():
             return {"mode": "general", "emotion": "neutral", "confidence": 0.3, "reasoning": "Empty message"}
         
-        # Check cache first
         if user_message in self._analysis_cache:
             return self._analysis_cache[user_message]
         
@@ -640,34 +461,25 @@ SPECIALIZED MODES:
         try:
             analysis_prompt = f"{INTENT_ANALYSIS_PROMPT}\n\nUser message: \"{user_message}\""
             response = self.llm.invoke(analysis_prompt)
-            
-            # Try to parse JSON response
             response_content = response.content.strip()
             if response_content.startswith('{') and response_content.endswith('}'):
                 analysis_result = json.loads(response_content)
                 if all(key in analysis_result for key in ["mode", "emotion"]):
                     self._analysis_cache[user_message] = analysis_result
-                    print(f"🧠 AI Analysis: Mode={analysis_result['mode']}, Emotion={analysis_result['emotion']}")
+                    logger.info(f"AI Analysis: Mode={analysis_result['mode']}, Emotion={analysis_result['emotion']}")
                     return analysis_result
-            
-            # Fallback to keyword analysis
-            result = self._fallback_analysis(user_message)
-            self._analysis_cache[user_message] = result
-            return result
-                
+            return self._fallback_analysis(user_message)
         except Exception as e:
-            print(f"⚠️ AI analysis error: {e}")
+            logger.error(f"AI analysis error: {e}")
             result = self._fallback_analysis(user_message)
             self._analysis_cache[user_message] = result
             return result
 
     def _fallback_analysis(self, user_message: str) -> dict:
-        """Fallback keyword-based analysis."""
         user_lower = user_message.lower()
         mode = "general"
         emotion = "neutral"
         
-        # Mode detection
         if any(word in user_lower for word in ["play", "game", "fun", "bored"]):
             mode = "game"
         elif any(word in user_lower for word in ["story", "tell", "read"]):
@@ -675,7 +487,6 @@ SPECIALIZED MODES:
         elif any(word in user_lower for word in ["learn", "how", "why", "what", "explain"]):
             mode = "learning"
         
-        # Emotion detection
         if any(word in user_lower for word in ["sad", "upset", "bad", "terrible"]):
             emotion = "sad"
         elif any(word in user_lower for word in ["happy", "great", "awesome", "wonderful"]):
@@ -693,22 +504,18 @@ SPECIALIZED MODES:
         }
 
     def _router(self, state: LumoState) -> str:
-        """Route conversation based on AI analysis."""
         try:
             if not state.get("messages") or len(state["messages"]) == 0:
                 return "general"
             
-            # Get the last user message
             last_message = state["messages"][-1].content.lower()
             
-            # Check for first message response
             if len(state["messages"]) == 1:
                 if "yes" in last_message or "yeah" in last_message or "sure" in last_message:
                     return "activities"
                 elif "no" in last_message or "nope" in last_message:
                     return "general"
             
-            # Check for activity selection
             if "stories" in last_message or "story" in last_message:
                 return "story"
             elif "games" in last_message or "game" in last_message or "play" in last_message:
@@ -716,15 +523,12 @@ SPECIALIZED MODES:
             elif "learn" in last_message or "how" in last_message or "why" in last_message or "what" in last_message:
                 return "learning"
             
-            # Default to general conversation
             return "general"
-            
         except Exception as e:
-            print(f"❌ Router error: {e}")
+            logger.error(f"Router error: {e}")
             return "general"
 
     def _enhance_state_with_memory(self, state: LumoState) -> LumoState:
-        """Enhance state with relevant memory and context."""
         try:
             username = state.get("username", "unknown")
             if not state.get("messages"):
@@ -732,25 +536,21 @@ SPECIALIZED MODES:
             
             current_message = state["messages"][-1].content if state["messages"] else ""
             
-            # Get relevant memories from vector memory if available
             if self.vector_memory and self.vector_memory.vector_store:
                 relevant_memories = self.vector_memory.retrieve_relevant_memories(
                     username, current_message, k=3
                 )
-                
                 if relevant_memories:
                     memory_context = "RELEVANT MEMORIES:\n" + "\n".join(relevant_memories)
                     state["summary_context"] = memory_context
-                    print(f"🧠 Enhanced state with {len(relevant_memories)} relevant memories")
+                    logger.info(f"Enhanced state with {len(relevant_memories)} relevant memories")
             
             return state
-            
         except Exception as e:
-            print(f"⚠️ Memory enhancement error: {e}")
+            logger.error(f"Memory enhancement error: {e}")
             return state
 
     def _create_conversation_summary(self, username: str, messages: List[Any], start_idx: int, end_idx: int) -> Dict[str, Any]:
-        """Create conversation summary for long-term memory."""
         try:
             if not self.llm:
                 return {
@@ -760,7 +560,6 @@ SPECIALIZED MODES:
                     "type": "fallback_summary"
                 }
             
-            # Format messages for summarization
             conversation_text = ""
             for i, msg in enumerate(messages[start_idx:end_idx+1]):
                 if hasattr(msg, 'content'):
@@ -791,9 +590,8 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
                 "type": "ai_generated_summary",
                 "message_count": end_idx - start_idx + 1
             }
-            
         except Exception as e:
-            print(f"❌ Summary creation error: {e}")
+            logger.error(f"Summary creation error: {e}")
             return {
                 "content": f"Error creating summary: {str(e)}",
                 "timestamp": datetime.utcnow().isoformat(),
@@ -802,119 +600,39 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
             }
 
     def _store_memories_in_vector_db(self, state: LumoState):
-        """Store only timeline memories in vector database."""
         if not self.vector_memory:
             return
-            
         username = state.get("username", "unknown")
         timeline = state.get("timeline_memory", {})
-        
-        # Store only timeline memory in vector DB
         if timeline and timeline.get("story"):
             self.vector_memory.store_timeline_memory(username, timeline)
 
-    def _call_llm_with_enhanced_context(self, state: LumoState, interaction_type: str = "general"):
-        """Call LLM with enhanced context from state."""
+    async def _process_timeline_async(self, username: str, messages: List[Any], range_str: str, existing_timeline: Dict[str, Any]):
         try:
-            if not self.llm:
-                return {"messages": state["messages"] + [AIMessage(content="I'm having trouble thinking right now!")]}
-        
-            messages = state.get("messages", [])
-            username = state.get("username", "unknown")
-            emotion = state.get("current_emotion", "neutral")
-            summary_context = state.get("summary_context", "")
-            profile = state.get("user_profile", {})
-            
-            # Check if this is the first interaction
-            is_first_interaction = len(messages) == 1 and isinstance(messages[0], HumanMessage)
-            
-            # Build enhanced prompt
-            base_prompt = self._get_combined_prompt(interaction_type)
-            
-            # Add temporal awareness
-            timezone = state.get("user_timezone", "UTC")
-            temporally_aware_prompt = self._add_temporal_context_to_prompt(base_prompt, timezone)
-            
-            # Add emotional and memory context
-            enhanced_prompt = f"{temporally_aware_prompt}\n\nEMOTION: {emotion}"
-            if summary_context:
-                enhanced_prompt = f"{enhanced_prompt}\n\n{summary_context}"
-                print(f"🧠 Using enhanced timeline memory context for {username}")
-            
-            # Add first interaction context if needed
-            if is_first_interaction and profile:
-                child_name = profile.get("child_name", username)
-                interests = profile.get("interests", "fun things")
-                enhanced_prompt += f"\n\nFIRST INTERACTION CONTEXT:\nChild Name: {child_name}\nInterests: {interests}"
-            
-            # Build conversation for LLM
-            conversation_text = ""
-            for msg in messages:
-                if hasattr(msg, 'content'):
-                    msg_type = "User" if isinstance(msg, HumanMessage) else "Assistant"
-                    conversation_text += f"{msg_type}: {msg.content}\n"
-            
-            # Combine system prompt with conversation
-            full_prompt = f"{enhanced_prompt}\n\nConversation:\n{conversation_text}\n\nAssistant:"
-            
-            # Call LLM with simple string prompt
-            response = self.llm.invoke(full_prompt)
-            
-            # Create AI message from response
-            if hasattr(response, 'content'):
-                ai_content = response.content
-            else:
-                ai_content = str(response)
-            
-            return {"messages": messages + [AIMessage(content=ai_content)]}
-                
-        except Exception as e:
-            print(f"❌ Error in _call_llm_with_enhanced_context: {e}")
-            return {"messages": messages + [AIMessage(content="I'm having trouble thinking right now!")]}
-
-    def _process_timeline_async(self, username: str, messages: List[Any], range_str: str, existing_timeline: Dict[str, Any]):
-        """Process timeline updates asynchronously in background."""
-        try:
-            print(f"🔄 Processing timeline in background for {username}")
-            
-            # Parse range
+            logger.info(f"Processing timeline in background for {username}")
             start_idx, end_idx = map(int, range_str.split('-'))
-            
-            # Create temporary summary
-            temp_summary = self._create_conversation_summary(
-                username, messages, start_idx, end_idx
-            )
-            print(f"📝 Created temporary summary for messages {range_str}")
-            
-            # Create updated timeline state for processing
+            temp_summary = self._create_conversation_summary(username, messages, start_idx, end_idx)
             temp_state = {
                 "username": username,
                 "timeline_memory": existing_timeline,
                 "interaction_count": end_idx + 1
             }
-            
-            # Update timeline with the temporary summary
             updated_state = self._update_timeline_with_summary(temp_state, temp_summary)
-            
-            # Store updated timeline in ChromaDB (SINGLE STORAGE POINT)
             updated_timeline = updated_state.get("timeline_memory", {})
             if updated_timeline and self.vector_memory:
                 self.vector_memory.store_timeline_memory(username, updated_timeline)
-                print(f"📚 Background timeline processing complete for {username}")
-            
+                logger.info(f"Background timeline processing complete for {username}")
+            return updated_state
         except Exception as e:
-            print(f"❌ Background timeline processing error: {e}")
+            logger.error(f"Background timeline processing error: {e}")
 
     def _update_timeline_with_summary(self, state: LumoState, temp_summary: Dict[str, Any]) -> LumoState:
-        """Update timeline memory with temporary summary in time-aware manner."""
         try:
             if not self.llm:
                 return state
             
             username = state.get("username", "unknown")
             timeline = state.get("timeline_memory", {})
-            
-            # Time-aware timeline update
             current_time = datetime.utcnow()
             summary_content = temp_summary.get('content', '')
             summary_range = temp_summary.get('range', 'unknown')
@@ -939,7 +657,6 @@ Respond with only the updated timeline story."""
             response = self.llm.invoke(timeline_prompt)
             updated_story = response.content if hasattr(response, 'content') else str(response)
             
-            # Update timeline in state
             state["timeline_memory"] = {
                 "story": updated_story.strip(),
                 "updated_at": current_time.isoformat(),
@@ -948,30 +665,66 @@ Respond with only the updated timeline story."""
                 "last_summary_processed": current_time.isoformat()
             }
             
-            print(f"📅 Timeline memory updated with summary {summary_range} for {username}")
-            
+            logger.info(f"Timeline memory updated with summary {summary_range} for {username}")
             return state
-                
         except Exception as e:
-            print(f"❌ Timeline update error: {e}")
+            logger.error(f"Timeline update error: {e}")
             return state
 
-    def _setup_enhanced_graph(self):
-        """Setup the enhanced LangGraph workflow."""
+    def _call_llm_with_enhanced_context(self, state: LumoState, interaction_type: str = "general"):
+        try:
+            if not self.llm:
+                return {"messages": state["messages"] + [AIMessage(content="I'm having trouble thinking right now!")]}
         
+            messages = state.get("messages", [])
+            username = state.get("username", "unknown")
+            emotion = state.get("current_emotion", "neutral")
+            summary_context = state.get("summary_context", "")
+            profile = state.get("user_profile", {})
+            
+            is_first_interaction = len(messages) == 1 and isinstance(messages[0], HumanMessage)
+            
+            base_prompt = self._get_combined_prompt(interaction_type)
+            timezone = state.get("user_timezone", "UTC")
+            temporally_aware_prompt = self._add_temporal_context_to_prompt(base_prompt, timezone)
+            
+            enhanced_prompt = f"{temporally_aware_prompt}\n\nEMOTION: {emotion}"
+            if summary_context:
+                enhanced_prompt = f"{enhanced_prompt}\n\n{summary_context}"
+                logger.info(f"Using enhanced timeline memory context for {username}")
+            
+            if is_first_interaction and profile:
+                child_name = profile.get("child_name", username)
+                interests = profile.get("interests", "fun things")
+                enhanced_prompt += f"\n\nFIRST INTERACTION CONTEXT:\nChild Name: {child_name}\nInterests: {interests}"
+            
+            conversation_text = ""
+            for msg in messages:
+                if hasattr(msg, 'content'):
+                    msg_type = "User" if isinstance(msg, HumanMessage) else "Assistant"
+                    conversation_text += f"{msg_type}: {msg.content}\n"
+            
+            full_prompt = f"{enhanced_prompt}\n\nConversation:\n{conversation_text}\n\nAssistant:"
+            
+            response = self.llm.invoke(full_prompt)
+            ai_content = response.content if hasattr(response, 'content') else str(response)
+            
+            return {"messages": messages + [AIMessage(content=ai_content)]}
+        except Exception as e:
+            logger.error(f"Error in _call_llm_with_enhanced_context: {e}")
+            return {"messages": messages + [AIMessage(content="I'm having trouble thinking right now!")]}
+
+    def _setup_enhanced_graph(self):
         def enhance_and_route(state: LumoState) -> str:
-            """Enhance state with memory and route to appropriate node."""
             enhanced_state = self._enhance_state_with_memory(state)
             return self._router(enhanced_state)
         
-        # Add nodes for each interaction type
         self.workflow.add_node("general", lambda state: self._call_llm_with_enhanced_context(state, "general"))
         self.workflow.add_node("activities", lambda state: self._call_llm_with_enhanced_context(state, "activities"))
         self.workflow.add_node("game", lambda state: self._call_llm_with_enhanced_context(state, "game"))
         self.workflow.add_node("story", lambda state: self._call_llm_with_enhanced_context(state, "story"))
         self.workflow.add_node("learning", lambda state: self._call_llm_with_enhanced_context(state, "learning"))
         
-        # Set up conditional routing
         self.workflow.set_conditional_entry_point(
             enhance_and_route,
             {
@@ -983,7 +736,6 @@ Respond with only the updated timeline story."""
             }
         )
         
-        # Add edges to END
         self.workflow.add_edge("general", END)
         self.workflow.add_edge("activities", END)
         self.workflow.add_edge("game", END)
@@ -991,14 +743,11 @@ Respond with only the updated timeline story."""
         self.workflow.add_edge("learning", END)
 
     def _get_combined_prompt(self, interaction_type: str) -> str:
-        """Get combined prompt for interaction type."""
         mode_prompt = self.mode_prompts.get(interaction_type, self.mode_prompts["general"])
         return f"{self.core_identity}\n\n{self.chat}\n\n{mode_prompt}"
 
     def _add_temporal_context_to_prompt(self, base_prompt: str, user_timezone: str = "UTC") -> str:
-        """Add temporal awareness to prompt."""
         try:
-            # Get current time
             if user_timezone != "UTC":
                 tz = pytz.timezone(user_timezone)
                 current_time = datetime.now(tz)
@@ -1012,315 +761,28 @@ CURRENT TEMPORAL AWARENESS:
 - Timezone: {current_time.strftime('%Z')} ({user_timezone})
 
 IMPORTANT: When users mention temporal words like "today", "yesterday", "now", etc., use these ACTUAL dates and times."""
-            
             return f"{base_prompt}\n\n{temporal_context}"
-            
         except Exception as e:
-            print(f"⚠️ Temporal context error: {e}")
+            logger.error(f"Temporal context error: {e}")
             return base_prompt
 
-    def _update_conversation_history(self, username: str, user_message: str, ai_response: str):
-        """Update conversation history in MongoDB."""
-        try:
-            # Update in users collection
-            self.db.users.update_one(
-                {"username": username},
-                {
-                    "$push": {
-                        "chats": {
-                            "user_input": user_message,
-                            "ai_response": ai_response,
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                    },
-                    "$inc": {"interaction_count": 1},
-                    "$set": {"updated_at": datetime.utcnow()}
-                }
-            )
-        except Exception as e:
-            print(f"Error updating conversation history: {e}")
-
-    def _update_relevant_memories(self, username: str, user_message: str, ai_response: str):
-        """Update relevant memories in vector store."""
-        try:
-            if self.vector_memory and self.vector_memory.vector_store:
-                # Create a memory document
-                memory_text = f"User: {user_message}\nLumo: {ai_response}"
-                self.vector_memory.vector_store.add_texts(
-                    texts=[memory_text],
-                    metadatas=[{
-                        "username": username,
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "type": "conversation"
-                    }]
-                )
-        except Exception as e:
-            print(f"Error updating relevant memories: {e}")
-
-    def _save_to_mongodb(self, username: str, user_message: str, ai_response: str):
-        """Save conversation to MongoDB."""
-        try:
-            # Update in users collection
-            self.db.users.update_one(
-                {"username": username},
-                {
-                    "$push": {
-                        "chats": {
-                            "user_input": user_message,
-                            "ai_response": ai_response,
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                    },
-                    "$inc": {"interaction_count": 1},
-                    "$set": {"updated_at": datetime.utcnow()}
-                }
-            )
-        except Exception as e:
-            print(f"Error saving to MongoDB: {e}")
-
-    def process_message(self, message: str, username: str) -> str:
-        """Process a user message and return a response."""
-        try:
-            # Get user info from MongoDB
-            user_info = self.get_user_info(username)
-            if not user_info:
-                # Create new user if doesn't exist
-                user_info = {
-                    "username": username,
-                    "interaction_count": 0,
-                    "created_at": datetime.utcnow(),
-                    "storage_type": "mongodb"
-                }
-                self.db.users.insert_one(user_info)
-            
-            # Get user profile
-            profile = user_info.get("profile", {})
-            
-            # Handle created_at date
-            created_at = user_info.get("created_at")
-            if isinstance(created_at, str):
-                try:
-                    created_at = datetime.fromisoformat(created_at)
-                except ValueError:
-                    created_at = datetime.utcnow()
-            elif not isinstance(created_at, datetime):
-                created_at = datetime.utcnow()
-            
-            # Create initial state
-            state = {
-                "messages": [],
-                "username": username,
-                "user_profile": profile,
-                "user_timezone": "UTC",
-                "interaction_count": user_info.get("interaction_count", 0),
-                "timeline_memory": {},
-                "vector_memory_metadata": {},
-                "current_mode": "general",
-                "current_emotion": "neutral",
-                "summary_context": None,
-                "created_at": created_at.isoformat(),
-                "last_updated": datetime.utcnow().isoformat()
-            }
-            
-            # Get conversation history from LangGraph checkpointer first
-            config = {"configurable": {"thread_id": f"enhanced_{username}"}}
-            try:
-                state_history = list(self.ai_app.get_state_history(config))
-                if state_history:
-                    last_state = state_history[0].values
-                    state["messages"] = last_state.get("messages", [])
-                    state["current_mode"] = last_state.get("current_mode", "general")
-                    state["current_emotion"] = last_state.get("current_emotion", "neutral")
-            except Exception as e:
-                print(f"Warning: Could not load state from checkpointer: {e}")
-                # Fallback to MongoDB history if checkpointer fails
-                if user_info.get("chats"):
-                    for chat in user_info["chats"]:
-                        if "user_input" in chat:
-                            state["messages"].append(HumanMessage(content=chat["user_input"]))
-                        if "ai_response" in chat:
-                            state["messages"].append(AIMessage(content=chat["ai_response"]))
-            
-            # Add current message
-            state["messages"].append(HumanMessage(content=message))
-            
-            # Process through LangGraph workflow
-            response_state = self.ai_app.invoke(state, config=config)
-            
-            # Get the response from the last AI message
-            response = response_state["messages"][-1].content
-            
-            # Update conversation history
-            self._update_conversation_history(username, message, response)
-            
-            # Update relevant memories
-            self._update_relevant_memories(username, message, response)
-            
-            return response
-            
-        except Exception as e:
-            print(f"Error processing message: {e}")
-            return "I'm having trouble processing your message right now. Please try again!"
-    
-    def get_user_info(self, username: str) -> dict:
-        """Get comprehensive user information from both storage sources."""
-        if not self.checkpointer:
-            return {"error": "Checkpointer not available"}
-        
-        try:
-            config = {"configurable": {"thread_id": f"enhanced_{username}"}}
-            
-            # Initialize result with basic info
-            result = {
-                "username": username,
-                "storage_sources": [],
-                "errors": []
-            }
-            
-            # Try to get data from users collection (PRIMARY)
-            users_data = self._get_user_from_users_collection(username)
-            if users_data:
-                result["storage_sources"].append("Users Collection")
-                result.update({
-                        "interaction_count": users_data.get("interaction_count", 0),
-                        "chat_history_count": len(users_data.get("chats", [])),
-                        "timeline_summary": bool(users_data.get("timeline_summaries", {}).get("story")),
-                        "conversation_summaries": len(users_data.get("summaries", [])),
-                        "profile": users_data.get("profile", {}),
-                        "created_at": users_data.get("created_at"),
-                        "updated_at": users_data.get("updated_at"),
-                        "storage_notes": users_data.get("storage_notes", {})
-                })
-            
-            # Try to get state from LangGraph checkpointer (SECONDARY)
-            checkpointer_data = None
-            try:
-                state_history = list(self.ai_app.get_state_history(config))
-                if state_history:
-                    checkpointer_data = state_history[0].values
-                    result["storage_sources"].append("LangGraph MongoDB Checkpointer")
-                    if not result.get("profile"):
-                        result["profile"] = checkpointer_data.get("user_profile", {})
-            except Exception as e:
-                result["errors"].append(f"LangGraph checkpointer error: {e}")
-            
-            # Try to get data from original collection for migration
-            if not users_data and not checkpointer_data:
-                original_data = self._load_user_data_from_original_collection(username)
-                if original_data:
-                    result["storage_sources"].append("Original Collection (Migration Available)")
-                    result.update({
-                        "interaction_count": original_data.get("interaction_count", 0),
-                        "timeline_interactions": original_data.get("timeline_memory", {}).get("total_interactions", 0),
-                        "created_at": original_data.get("created_at"),
-                        "last_updated": original_data.get("last_updated"),
-                        "current_mode": "general",
-                        "current_emotion": "neutral",
-                        "migration_needed": True
-                    })
-                    if not result.get("profile"):
-                        result["profile"] = original_data.get("user_profile", {})
-            
-            # Set final status
-            if result["storage_sources"]:
-                result["status"] = "found"
-                result["persistent"] = True
-                result["primary_storage"] = "Users Collection" if users_data else result["storage_sources"][0]
-            else:
-                result["status"] = "new_user"
-                result["persistent"] = bool(self.checkpointer)
-            
-            # Add vector memory info
-            if self.vector_memory:
-                result["vector_memory_count"] = self.vector_memory.get_user_timeline_count(username)
-            
-            return result
-            
-        except Exception as e:
-            return {"error": f"Failed to get user info: {str(e)}", "username": username}
-    
-    def delete_user_data(self, username: str) -> dict:
-        """Delete all user data from LangGraph checkpointer."""
-        if not self.checkpointer:
-            return {"error": "Checkpointer not available"}
-        
-        try:
-            config = {"configurable": {"thread_id": f"enhanced_{username}"}}
-            
-            # Delete from LangGraph checkpointer
-            # Note: LangGraph's MongoDB checkpointer doesn't have a direct delete method
-            # We would need to implement this through the MongoDB client directly
-            
-            deleted_count = 0
-            if hasattr(self.checkpointer, 'client'):
-                mongo_client = self.checkpointer.client
-                db = mongo_client[DATABASE_NAME]
-                checkpoints_collection = db["lumo_checkpoints"]
-                
-                # Delete documents related to this thread
-                result = checkpoints_collection.delete_many({"thread_id": f"enhanced_{username}"})
-                deleted_count = result.deleted_count
-            
-            # Delete from vector memory
-            deleted_vectors = 0
-            if self.vector_memory and self.vector_memory.vector_store:
-                try:
-                    # Delete vector memories for this user
-                    docs = self.vector_memory.vector_store.similarity_search(
-                        "", k=100, filter={"username": username}
-                    )
-                    if docs:
-                        doc_ids = [doc.metadata.get("id") for doc in docs if doc.metadata.get("id")]
-                        if doc_ids:
-                            self.vector_memory.vector_store.delete(ids=doc_ids)
-                            deleted_vectors = len(doc_ids)
-                except Exception as ve:
-                    print(f"⚠️ Vector deletion warning: {ve}")
-            
-            return {
-                "success": True,
-                "username": username,
-                "deleted_checkpoints": deleted_count,
-                "deleted_vectors": deleted_vectors
-            }
-            
-        except Exception as e:
-            return {"error": f"Failed to delete user data: {str(e)}"}
-    
-    def get_combined_prompt(self, mode: str = "general", user_context: str = "", memory_context: str = "") -> str:
-        """Get the combined prompt for a specific mode with context."""
-        mode_prompt = self.mode_prompts.get(mode, self.mode_prompts["general"])
-        
-        context_section = ""
-        if memory_context:
-            context_section += f"\n\n=== RELEVANT MEMORIES ===\n{memory_context}\n"
-        if user_context:
-            context_section += f"\n=== USER CONTEXT ===\n{user_context}\n"
-        
-        return f"{self.core_identity}\n\n{self.chat}\n\n{mode_prompt}{context_section}"
-
     def _sync_to_users_collection(self, state: LumoState):
-        """Sync current state to users collection for tracking and timeline access."""
         if self.users_collection is None:
             return
-            
         try:
             username = state["username"]
             current_time = datetime.now(pytz.UTC)
             
-            # Convert messages to storable format (same format as existing users)
             message_history = []
             for i, msg in enumerate(state["messages"]):
                 if hasattr(msg, 'content'):
                     if isinstance(msg, HumanMessage):
-                        # Human message
                         msg_dict = {
                             "user_input": msg.content,
                             "timestamp": current_time.isoformat(),
                             "interaction_id": i
                         }
                     elif isinstance(msg, AIMessage):
-                        # Add AI response to previous message or create new entry
                         if message_history and "ai_response" not in message_history[-1]:
                             message_history[-1]["ai_response"] = msg.content
                             message_history[-1]["ai_timestamp"] = current_time.isoformat()
@@ -1334,7 +796,6 @@ IMPORTANT: When users mention temporal words like "today", "yesterday", "now", e
                     if isinstance(msg, HumanMessage) or (isinstance(msg, AIMessage) and (not message_history or "ai_response" in message_history[-1])):
                         message_history.append(msg_dict)
             
-            # Format timeline summaries in the same structure as existing users
             timeline_summaries = {}
             timeline_data = state.get("timeline_memory", {})
             if timeline_data and timeline_data.get("story"):
@@ -1342,176 +803,254 @@ IMPORTANT: When users mention temporal words like "today", "yesterday", "now", e
                     "story": timeline_data.get("story", ""),
                     "created_at": timeline_data.get("updated_at", current_time.isoformat()),
                     "updated_at": timeline_data.get("updated_at", current_time.isoformat()),
-                    "summaries_processed": 1,
+                    "summaries_processed": timeline_data.get("summaries_processed", 0) + 1,
                     "last_interaction_time": current_time.isoformat(),
                     "first_interaction_time": state.get("created_at", current_time.isoformat()),
                     "total_interactions": state.get("interaction_count", 0)
                 }
             
-            # Prepare user document in same format as existing users
             user_doc = {
-                "_id": username,  # Use username as document ID for consistency
+                "_id": username,  # FIX: Use username as _id
                 "username": username,
                 "chats": message_history,
                 "profile": state.get("user_profile", {}),
                 "interaction_count": state.get("interaction_count", 0),
                 "timeline_summaries": timeline_summaries,
-                "summaries": [],  # Will be populated when conversation summaries are created
+                "summaries": state.get("summaries", []),  # FIX: Include summaries
                 "current_mode": state.get("current_mode", "general"),
                 "current_emotion": state.get("current_emotion", "neutral"),
                 "created_at": state.get("created_at", current_time.isoformat()),
                 "updated_at": current_time.isoformat(),
-                "email": f"{username}@lumo.ai",  # Placeholder
+                "email": f"{username}@lumo.ai",
                 "user_timezone": state.get("user_timezone", "UTC"),
                 "vector_memory_metadata": state.get("vector_memory_metadata", {}),
                 "storage_notes": {
                     "primary": "LangGraph MongoDB Checkpointer",
-                    "secondary": "Users Collection (Tracking & Timeline Access)",
-                    "vector_memory": "ChromaDB Timeline Summaries Only",
+                    "secondary": "Users Collection",
+                    "vector_memory": "ChromaDB Timeline Summaries",
                     "format": "Compatible with original users collection schema"
                 }
             }
             
-            # Upsert to users collection with username as _id
-            result = self.users_collection.replace_one(
-                {"_id": username},  # Query by _id instead of username
-                user_doc,
-                upsert=True
-            )
-            
-            if result.upserted_id:
-                print(f"📝 Created new user record in users collection for {username}")
-            else:
-                print(f"📝 Updated user record in users collection for {username}")
-                
+            result = self.users_collection.replace_one({"_id": username}, user_doc, upsert=True)
+            logger.info(f"{'Created' if result.upserted_id else 'Updated'} user record for {username}")
         except Exception as e:
-            print(f"⚠️ Error syncing to users collection: {e}")
+            logger.error(f"Error syncing to users collection: {e}")
 
-    def _get_user_from_users_collection(self, username: str) -> Optional[Dict[str, Any]]:
-        """Get user data from users collection for easy access to timeline summaries."""
-        if self.users_collection is None:
-            return None
-            
+    def process_message(self, message: str, username: str) -> str:
         try:
-            user_doc = self.users_collection.find_one(
-                {"_id": username},  # Query by _id for consistency
+            # Get user info or create new user
+            user_info = self.get_user_info(username)
+            if not user_info or user_info.get("status") == "new_user":
+                user_info = {
+                    "_id": username,  # FIX: Ensure _id is username
+                    "username": username,
+                    "interaction_count": 0,
+                    "created_at": datetime.utcnow(),
+                    "storage_type": "mongodb",
+                    "profile": {},  # Initialize empty profile
+                    "summaries": []  # Initialize summaries
+                }
+                self.users_collection.insert_one(user_info)
+            
+            # Initialize state
+            config = {"configurable": {"thread_id": f"enhanced_{username}"}}
+            state_history = list(self.ai_app.get_state_history(config))
+            if state_history:
+                state = state_history[0].values
+            else:
+                created_at = user_info.get("created_at")
+                if isinstance(created_at, str):
+                    try:
+                        created_at = datetime.fromisoformat(created_at)
+                    except ValueError:
+                        created_at = datetime.utcnow()
+                elif not isinstance(created_at, datetime):
+                    created_at = datetime.utcnow()
+                
+                state = {
+                    "messages": [],
+                    "username": username,
+                    "user_profile": user_info.get("profile", {}),
+                    "user_timezone": "UTC",
+                    "interaction_count": user_info.get("interaction_count", 0),
+                    "timeline_memory": user_info.get("timeline_summaries", {}),
+                    "vector_memory_metadata": {},
+                    "current_mode": "general",
+                    "current_emotion": "neutral",
+                    "summary_context": None,
+                    "created_at": created_at.isoformat(),
+                    "last_updated": datetime.utcnow().isoformat(),
+                    "summaries": user_info.get("summaries", [])  # FIX: Include summaries
+                }
+            
+            # Load chat history from MongoDB if checkpointer is empty
+            if not state["messages"] and user_info.get("chats"):
+                for chat in user_info["chats"]:
+                    if "user_input" in chat:
+                        state["messages"].append(HumanMessage(content=chat["user_input"]))
+                    if "ai_response" in chat:
+                        state["messages"].append(AIMessage(content=chat["ai_response"]))
+            
+            # Add current message
+            state["messages"].append(HumanMessage(content=message))
+            
+            # Update mode and emotion
+            analysis = self._ai_analyze_intent_and_emotion(message)
+            state["current_mode"] = analysis["mode"]
+            state["current_emotion"] = analysis["emotion"]
+            
+            # Process through LangGraph
+            response_state = self.ai_app.invoke(state, config=config)
+            response = response_state["messages"][-1].content
+            
+            # Update interaction count
+            state["interaction_count"] += 1
+            
+            # Generate summary if at 20 interactions
+            if state["interaction_count"] % 20 == 0:
+                start_idx = max(0, state["interaction_count"] - 20)
+                end_idx = state["interaction_count"] - 1
+                loop = asyncio.get_event_loop()
+                updated_state = loop.run_until_complete(
+                    self._process_timeline_async(username, state["messages"], f"{start_idx}-{end_idx}", state["timeline_memory"])
+                )
+                state["timeline_memory"] = updated_state["timeline_memory"]
+                # FIX: Store summary in summaries array
+                summary = self._create_conversation_summary(username, state["messages"], start_idx, end_idx)
+                state["summaries"] = state.get("summaries", []) + [summary]
+            
+            # Sync to MongoDB
+            self._sync_to_users_collection(state)
+            
+            return response
+        except Exception as e:
+            logger.error(f"Error processing message: {e}")
+            return "I'm having trouble processing your message right now. Please try again!"
+
+    def get_user_info(self, username: str) -> dict:
+        if not self.checkpointer:
+            return {"error": "Checkpointer not available"}
+        try:
+            config = {"configurable": {"thread_id": f"enhanced_{username}"}}
+            result = {
+                "username": username,
+                "storage_sources": [],
+                "errors": []
+            }
+            
+            # Query with _id as username
+            users_data = self.users_collection.find_one(
+                {"_id": username},
                 {
                     "profile": 1,
                     "interaction_count": 1,
                     "created_at": 1,
                     "updated_at": 1,
                     "chats": 1,
-                    "timeline_summaries": 1
+                    "timeline_summaries": 1,
+                    "summaries": 1
                 }
             )
-            
-            if user_doc:
-                print(f"Debug - Found user doc: {user_doc}")
-                return user_doc
-            
-            return None
-            
-        except Exception as e:
-            print(f"⚠️ Error retrieving from users collection: {e}")
-            return None
-
-    def get_user_timeline_summary(self, username: str) -> Optional[Dict[str, Any]]:
-        """Get user's timeline summary from users collection for easy access."""
-        if self.users_collection is None:
-            return None
-            
-        try:
-            user_doc = self.users_collection.find_one(
-                {"_id": username},  # Query by _id for consistency
-                {"timeline_summaries": 1, "interaction_count": 1, "created_at": 1, "updated_at": 1}
-            )
-            
-            if user_doc and user_doc.get("timeline_summaries"):
-                timeline = user_doc["timeline_summaries"]
-                return {
-                    "username": username,
-                    "story": timeline.get("story", ""),
-                    "total_interactions": timeline.get("total_interactions", 0),
-                    "summaries_processed": timeline.get("summaries_processed", 0),
-                    "first_interaction": timeline.get("first_interaction_time"),
-                    "last_interaction": timeline.get("last_interaction_time"),
-                    "created_at": timeline.get("created_at"),
-                    "updated_at": timeline.get("updated_at"),
-                    "user_interaction_count": user_doc.get("interaction_count", 0),
-                    "user_created": user_doc.get("created_at"),
-                    "user_updated": user_doc.get("updated_at")
-                }
-            
-            return None
-            
-        except Exception as e:
-            print(f"⚠️ Error retrieving timeline summary: {e}")
-            return None
-
-    def get_all_users_overview(self) -> List[Dict[str, Any]]:
-        """Get overview of all users from users collection for monitoring."""
-        if self.users_collection is None:
-            return []
-            
-        try:
-            users = self.users_collection.find(
-                {},
-                {
-                    "username": 1,
-                    "interaction_count": 1,
-                    "created_at": 1,
-                    "updated_at": 1,
-                    "timeline_summaries.total_interactions": 1,
-                    "timeline_summaries.story": 1,
-                    "summaries": 1,
-                    "storage_notes": 1
-                }
-            )
-            
-            overview = []
-            for user in users:
-                timeline = user.get("timeline_summaries", {})
-                overview.append({
-                    "username": user.get("username"),
-                    "interaction_count": user.get("interaction_count", 0),
-                    "timeline_interactions": timeline.get("total_interactions", 0),
-                    "has_timeline_story": bool(timeline.get("story")),
-                    "conversation_summaries": len(user.get("summaries", [])),
-                    "created_at": user.get("created_at"),
-                    "updated_at": user.get("updated_at"),
-                    "storage_type": user.get("storage_notes", {}).get("primary", "Unknown")
+            if users_data:
+                result["storage_sources"].append("Users Collection")
+                result.update({
+                    "interaction_count": users_data.get("interaction_count", 0),
+                    "chat_history_count": len(users_data.get("chats", [])),
+                    "timeline_summary": bool(users_data.get("timeline_summaries", {}).get("story")),
+                    "conversation_summaries": len(users_data.get("summaries", [])),
+                    "profile": users_data.get("profile", {}),
+                    "created_at": users_data.get("created_at"),
+                    "updated_at": users_data.get("updated_at"),
+                    "storage_notes": users_data.get("storage_notes", {})
                 })
             
-            return overview
+            checkpointer_data = None
+            try:
+                state_history = list(self.ai_app.get_state_history(config))
+                if state_history:
+                    checkpointer_data = state_history[0].values
+                    result["storage_sources"].append("LangGraph MongoDB Checkpointer")
+                    if not result.get("profile"):
+                        result["profile"] = checkpointer_data.get("user_profile", {})
+            except Exception as e:
+                result["errors"].append(f"LangGraph checkpointer error: {e}")
             
+            if result["storage_sources"]:
+                result["status"] = "found"
+                result["persistent"] = True
+                result["primary_storage"] = "Users Collection" if users_data else result["storage_sources"][0]
+            else:
+                result["status"] = "new_user"
+                result["persistent"] = bool(self.checkpointer)
+            
+            if self.vector_memory:
+                result["vector_memory_count"] = self.vector_memory.get_user_timeline_count(username)
+            
+            return result
         except Exception as e:
-            print(f"⚠️ Error getting users overview: {e}")
-            return []
+            return {"error": f"Failed to get user info: {str(e)}", "username": username}
 
-# Legacy compatibility - use enhanced agent
-LumoAgent = EnhancedLumoAgent
+    def delete_user_data(self, username: str) -> dict:
+        if not self.checkpointer:
+            return {"error": "Checkpointer not available"}
+        try:
+            config = {"configurable": {"thread_id": f"enhanced_{username}"}}
+            deleted_count = 0
+            if hasattr(self.checkpointer, 'client'):
+                mongo_client = self.checkpointer.client
+                db = mongo_client[DATABASE_NAME]
+                checkpoints_collection = db["lumo_checkpoints"]
+                result = checkpoints_collection.delete_many({"thread_id": f"enhanced_{username}"})
+                deleted_count = result.deleted_count
+            
+            deleted_vectors = 0
+            if self.vector_memory and self.vector_memory.vector_store:
+                try:
+                    docs = self.vector_memory.vector_store.similarity_search(
+                        "", k=100, filter={"username": username}
+                    )
+                    if docs:
+                        doc_ids = [doc.metadata.get("id") for doc in docs if doc.metadata.get("id")]
+                        if doc_ids:
+                            self.vector_memory.vector_store.delete(ids=doc_ids)
+                            deleted_vectors = len(doc_ids)
+                except Exception as ve:
+                    logger.warning(f"Vector deletion warning: {ve}")
+            
+            return {
+                "success": True,
+                "username": username,
+                "deleted_checkpoints": deleted_count,
+                "deleted_vectors": deleted_vectors
+            }
+        except Exception as e:
+            return {"error": f"Failed to delete user data: {str(e)}"}
+
+    def get_combined_prompt(self, mode: str = "general", user_context: str = "", memory_context: str = "") -> str:
+        mode_prompt = self.mode_prompts.get(mode, self.mode_prompts["general"])
+        context_section = ""
+        if memory_context:
+            context_section += f"\n\n=== RELEVANT MEMORIES ===\n{memory_context}\n"
+        if user_context:
+            context_section += f"\n=== USER CONTEXT ===\n{user_context}\n"
+        return f"{self.core_identity}\n\n{self.chat}\n\n{mode_prompt}{context_section}"
 
 if __name__ == "__main__":
-    print("🧸 Initializing Enhanced Lumo Agent for testing...")
+    logger.info("Initializing Enhanced Lumo Agent for testing...")
     agent = EnhancedLumoAgent()
-
     if not agent.llm:
-        print("❌ LLM could not be initialized. Exiting.")
+        logger.error("LLM could not be initialized. Exiting.")
     else:
-        print("💡 Enhanced Lumo is ready! (Type 'quit' to end)")
-        print("=" * 50)
-        
+        logger.info("Lumo is ready! (Type 'quit' to end)")
         username = "test_user"
-        print(f"💡 Lumo: Hi there! I'm Lumo, your friendly AI companion!")
-
+        print(f"Lumo: Hi there! I'm Lumo, your friendly AI companion!")
         while True:
-            user_input = input("👧/👦 You: ")
+            user_input = input("You: ")
             if user_input.lower() == 'quit':
-                print("💡 Lumo: Bye bye for now! It was fun chatting with you!")
+                print("Lumo: Bye bye for now! It was fun chatting with you!")
                 break
-            
             if not user_input.strip():
                 continue
-
-            ai_response = agent.invoke_agent(user_input, username)
-            print(f"💡 Lumo: {ai_response}")
+            ai_response = agent.process_message(user_input, username)
+            print(f"Lumo: {ai_response}")
