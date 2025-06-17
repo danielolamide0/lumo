@@ -206,8 +206,8 @@ class VectorMemoryManager:
             return None
         
         try:
-            doc_id = username  # Use username as fixed document ID
-            self.collection.upsert(
+            doc_id = f"{username}_{uuid.uuid4()}"
+            self.collection.add(
                 documents=[timeline_text],
                 metadatas=[{
                     "username": username,
@@ -216,13 +216,13 @@ class VectorMemoryManager:
                 }],
                 ids=[doc_id]
             )
-            logger.info(f"Upserted timeline memory for {username} with ID {doc_id}")
+            logger.info(f"Stored timeline memory for {username} with ID {doc_id}")
             return doc_id
         except Exception as e:
             logger.error(f"Error storing timeline memory: {e}")
             return None
     
-    def retrieve_relevant_memories(self, query_text: str, username: str, n_results: int = 1) -> List[str]:
+    def retrieve_relevant_memories(self, query_text: str, username: str, n_results: int = 3) -> List[str]:
         if not self.collection:
             logger.warning("ChromaDB not available, returning empty memories")
             return []
@@ -233,21 +233,9 @@ class VectorMemoryManager:
             return self.memory_cache[cache_key]
         
         try:
-            # Attempt to get the single document by ID
-            results = self.collection.get(
-                ids=[username],
-                where={"username": username}
-            )
-            memories = results.get("documents", [])
-            if memories:
-                logger.info(f"Retrieved single timeline memory for {username}")
-                self.memory_cache[cache_key] = memories
-                return memories
-            
-            # Fallback to query if needed
             results = self.collection.query(
                 query_texts=[query_text],
-                n_results=1,
+                n_results=n_results,
                 where={"username": username}
             )
             memories = results.get("documents", [[]])[0]
@@ -545,7 +533,7 @@ class EnhancedLumoAgent:
             current_message = state["messages"][-1].content if state["messages"] else ""
             
             if self.vector_memory:
-                relevant_memories = self.vector_memory.retrieve_relevant_memories(current_message, username, n_results=1)
+                relevant_memories = self.vector_memory.retrieve_relevant_memories(current_message, username, n_results=3)
                 if relevant_memories:
                     memory_context = "RELEVANT MEMORIES:\n" + "\n".join([f"[MEMORY]: {mem}" for mem in relevant_memories])
                     state["summary_context"] = memory_context
@@ -837,11 +825,11 @@ Respond with only the updated timeline story."""
                 range_str = f"{start_idx}-{end_idx}"
                 thread = Thread(target=self._process_timeline, args=(username, state["messages"], range_str, state.get("timeline_memory", {})))
                 thread.start()
-                logger.info(f"Started background summary generation for {username}")
+                logger.info(f"Started background thread for summary generation for {username}")
             
             self._sync_to_users_collection(state)
             
             return response_message
         except Exception as e:
-            logger.error(f"Error processing message: {e}"", exc_info=True)
-            return f"Failed: {str(e)}"
+            logger.error(f"Error processing message: {e}", exc_info=True)
+            return f"Oops, something went wrong: {str(e)}"
