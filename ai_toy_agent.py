@@ -7,7 +7,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from typing import Dict, List, Any, Optional, TypedDict
 from enum import Enum
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import pytz
 import json
 import logging
@@ -189,7 +189,8 @@ class VectorMemoryManager:
     def __init__(self, persist_path=CHROMA_PATH):
         try:
             self.embedding_function = embedding_functions.DefaultEmbeddingFunction()
-            self.client = chromadb.Persistent   self.collection = self.client.get_or_create_collection(
+            self.client = chromadb.PersistentClient(path=persist_path)
+            self.collection = self.client.get_or_create_collection(
                 name="lumo_timeline",
                 embedding_function=self.embedding_function
             )
@@ -205,23 +206,23 @@ class VectorMemoryManager:
             return None
         
         try:
-            doc_id = f"{username}_{uuid.uuid4()}"
-            self.collection.add(
+            doc_id = username  # Use username as fixed document ID
+            self.collection.upsert(
                 documents=[timeline_text],
                 metadatas=[{
                     "username": username,
-                    "timestamp": metadata.get("updated_at", datetime.utcnow().isoformat()),
+                    "timestamp": metadata.get("updated_at", datetime.now(UTC).isoformat()),
                     "interactions": metadata.get("total_interactions", 0)
                 }],
                 ids=[doc_id]
             )
-            logger.info(f"Stored timeline memory for {username} with ID {doc_id}")
+            logger.info(f"Upserted timeline memory for {username} with ID {doc_id}")
             return doc_id
         except Exception as e:
             logger.error(f"Error storing timeline memory: {e}")
             return None
     
-    def retrieve_relevant_memories(self, query_text: str, username: str, n_results: int = 3) -> List[str]:
+    def retrieve_relevant_memories(self, query_text: str, username: str, n_results: int = 1) -> List[str]:
         if not self.collection:
             logger.warning("ChromaDB not available, returning empty memories")
             return []
@@ -232,9 +233,21 @@ class VectorMemoryManager:
             return self.memory_cache[cache_key]
         
         try:
+            # Attempt to get the single document by ID
+            results = self.collection.get(
+                ids=[username],
+                where={"username": username}
+            )
+            memories = results.get("documents", [])
+            if memories:
+                logger.info(f"Retrieved single timeline memory for {username}")
+                self.memory_cache[cache_key] = memories
+                return memories
+            
+            # Fallback to query if needed
             results = self.collection.query(
                 query_texts=[query_text],
-                n_results=n_results,
+                n_results=1,
                 where={"username": username}
             )
             memories = results.get("documents", [[]])[0]
@@ -247,8 +260,8 @@ class VectorMemoryManager:
 
 # Enhanced State Management
 class LumoState(TypedDict):
-    messages: List[Any]  # Last 20 messages for short-term memory
-    all_chats: List[Dict[str, Any]]  # Full chat history
+    messages: List[Any]
+    all_chats: List[Dict[str, Any]]
     username: str
     user_profile: Dict[str, Any]
     user_timezone: Optional[str]
@@ -320,7 +333,6 @@ class EnhancedLumoAgent:
             return None
     
     def update_user_profile(self, username: str, profile: Dict[str, Any]):
-        """Update user profile in checkpointer state and sync to users collection."""
         try:
             config = {"configurable": {"thread_id": f"enhanced_{username}"}}
             state = self.ai_app.get_state(config).values if self.checkpointer else {}
@@ -337,13 +349,13 @@ class EnhancedLumoAgent:
                     "vector_memory_metadata": [],
                     "current_mode": "general",
                     "current_emotion": "neutral",
-                    "created_at": datetime.utcnow().isoformat(),
-                    "last_updated": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "last_updated": datetime.now(UTC).isoformat(),
                     "user_timezone": "UTC"
                 }
             
             state["user_profile"] = profile
-            state["last_updated"] = datetime.utcnow().isoformat()
+            state["last_updated"] = datetime.now(UTC).isoformat()
             
             if self.checkpointer:
                 self.ai_app.update_state(config, state)
@@ -356,7 +368,6 @@ class EnhancedLumoAgent:
             return {"success": False, "error": str(e)}
     
     def _sync_to_users_collection(self, state: LumoState):
-        """Sync checkpointer state to users collection for viewing."""
         try:
             username = state.get("username", "unknown")
             chats = state.get("all_chats", [])
@@ -371,8 +382,8 @@ class EnhancedLumoAgent:
                 "interaction_count": state.get("interaction_count", 0),
                 "summaries": summaries,
                 "timeline_summaries": [timeline_memory] if timeline_memory else [],
-                "created_at": state.get("created_at", datetime.utcnow().isoformat()),
-                "updated_at": state.get("last_updated", datetime.utcnow().isoformat()),
+                "created_at": state.get("created_at", datetime.now(UTC).isoformat()),
+                "updated_at": state.get("last_updated", datetime.now(UTC).isoformat()),
                 "storage_type": "mongodb_with_checkpointer"
             }
             
@@ -386,7 +397,6 @@ class EnhancedLumoAgent:
             logger.error(f"Error syncing to users collection: {e}")
     
     def get_user_info(self, username: str) -> Dict[str, Any]:
-        """Retrieve user info from checkpointer."""
         try:
             config = {"configurable": {"thread_id": f"enhanced_{username}"}}
             state = self.ai_app.get_state(config).values if self.checkpointer else {}
@@ -422,7 +432,6 @@ class EnhancedLumoAgent:
             return {"status": "error", "error": str(e)}
     
     def delete_user_data(self, username: str) -> Dict[str, Any]:
-        """Delete user data from checkpointer and users collection."""
         try:
             config = {"configurable": {"thread_id": f"enhanced_{username}"}}
             if self.checkpointer:
@@ -536,7 +545,7 @@ class EnhancedLumoAgent:
             current_message = state["messages"][-1].content if state["messages"] else ""
             
             if self.vector_memory:
-                relevant_memories = self.vector_memory.retrieve_relevant_memories(current_message, username, n_results=3)
+                relevant_memories = self.vector_memory.retrieve_relevant_memories(current_message, username, n_results=1)
                 if relevant_memories:
                     memory_context = "RELEVANT MEMORIES:\n" + "\n".join([f"[MEMORY]: {mem}" for mem in relevant_memories])
                     state["summary_context"] = memory_context
@@ -552,7 +561,7 @@ class EnhancedLumoAgent:
             if not self.llm:
                 return {
                     "content": f"Basic summary: {len(messages)} messages from {start_idx} to {end_idx}",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                     "range": f"{start_idx}-{end_idx}",
                     "type": "fallback_summary"
                 }
@@ -582,7 +591,7 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
             
             return {
                 "content": summary_content.strip(),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "range": f"{start_idx}-{end_idx}",
                 "type": "ai_generated_summary",
                 "message_count": end_idx - start_idx + 1
@@ -591,13 +600,12 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
             logger.error(f"Summary creation error for {username}, range {start_idx}-{end_idx}: {e}", exc_info=True)
             return {
                 "content": f"Error creating summary: {str(e)}",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "range": f"{start_idx}-{end_idx}",
                 "type": "error_summary"
             }
     
     def _process_timeline(self, username: str, messages: List[Any], range_str: str, existing_timeline: Dict[str, Any]):
-        """Process timeline and summary generation in a background thread."""
         try:
             logger.info(f"Processing timeline in background for {username}")
             start_idx, end_idx = map(int, range_str.split('-'))
@@ -621,11 +629,14 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
                 )
                 if doc_id:
                     vector_metadata = updated_state.get("vector_memory_metadata", [])
+                    existing = next((item for item in vector_metadata if item["doc_id"] == doc_id), None)
                     new_metadata = {
                         "doc_id": doc_id,
                         "timestamp": updated_state["timeline_memory"].get("updated_at"),
                         "range": temp_summary.get("range")
                     }
+                    if existing:
+                        vector_metadata.remove(existing)
                     vector_metadata.append(new_metadata)
                     updated_state["vector_memory_metadata"] = vector_metadata
             
@@ -645,7 +656,7 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
             
             username = state.get("username", "unknown")
             timeline = state.get("timeline_memory", {})
-            current_time = datetime.utcnow()
+            current_time = datetime.now(UTC)
             summary_content = temp_summary.get('content', '')
             summary_range = temp_summary.get('range', 'unknown')
             
@@ -790,8 +801,8 @@ Respond with only the updated timeline story."""
                     "vector_memory_metadata": [],
                     "current_mode": "general",
                     "current_emotion": "neutral",
-                    "created_at": datetime.utcnow().isoformat(),
-                    "last_updated": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "last_updated": datetime.now(UTC).isoformat(),
                     "user_timezone": "UTC"
                 }
             
@@ -799,7 +810,7 @@ Respond with only the updated timeline story."""
             state["current_mode"] = analysis.get("mode", "general")
             state["current_emotion"] = analysis.get("emotion", "neutral")
             
-            timestamp = datetime.utcnow().isoformat()
+            timestamp = datetime.now(UTC).isoformat()
             chat_entry = {"timestamp": timestamp}
             
             if user_message.strip():
@@ -807,7 +818,7 @@ Respond with only the updated timeline story."""
                 chat_entry["user_input"] = user_message
             
             state["interaction_count"] = state.get("interaction_count", 0) + 1
-            state["last_updated"] = datetime.utcnow().isoformat()
+            state["last_updated"] = datetime.now(UTC).isoformat()
             
             output = self.ai_app.invoke(state, config)
             response_message = output["messages"][-1].content if output.get("messages") else "I'm having trouble responding!"
@@ -826,11 +837,11 @@ Respond with only the updated timeline story."""
                 range_str = f"{start_idx}-{end_idx}"
                 thread = Thread(target=self._process_timeline, args=(username, state["messages"], range_str, state.get("timeline_memory", {})))
                 thread.start()
-                logger.info(f"Started background thread for summary generation for {username}")
+                logger.info(f"Started background summary generation for {username}")
             
             self._sync_to_users_collection(state)
             
             return response_message
         except Exception as e:
-            logger.error(f"Error processing message: {e}", exc_info=True)
-            return f"Oops, something went wrong: {str(e)}"
+            logger.error(f"Error processing message: {e}"", exc_info=True)
+            return f"Failed: {str(e)}"
