@@ -15,6 +15,7 @@ import asyncio
 import re
 import chromadb
 from chromadb.utils import embedding_functions
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -202,8 +203,8 @@ class VectorMemoryManager:
             return None
         
         try:
-            doc_id = f"{username}_{uuid.uuid4()}"
-            self.collection.add(
+            doc_id = username  # Use username as fixed document ID
+            self.collection.upsert(
                 documents=[timeline_text],
                 metadatas=[{
                     "username": username,
@@ -212,21 +213,32 @@ class VectorMemoryManager:
                 }],
                 ids=[doc_id]
             )
-            logger.info(f"Stored timeline memory for {username} with ID {doc_id}")
+            logger.info(f"Upserted timeline memory for {username} with ID {doc_id}")
             return doc_id
         except Exception as e:
             logger.error(f"Error storing timeline memory: {e}")
             return None
     
-    def retrieve_relevant_memories(self, query_text: str, username: str, n_results: int = 3) -> List[str]:
+    def retrieve_relevant_memories(self, query_text: str, username: str, n_results: int = 1) -> List[str]:
         if not self.collection:
             logger.warning("ChromaDB not available, returning empty memories")
             return []
         
         try:
+            # Attempt to get the single document by ID
+            results = self.collection.get(
+                ids=[username],
+                where={"username": username}
+            )
+            memories = results.get("documents", [])
+            if memories:
+                logger.info(f"Retrieved single timeline memory for {username}")
+                return memories
+            
+            # Fallback to query if needed
             results = self.collection.query(
                 query_texts=[query_text],
-                n_results=n_results,
+                n_results=1,
                 where={"username": username}
             )
             memories = results.get("documents", [[]])[0]
@@ -238,8 +250,8 @@ class VectorMemoryManager:
 
 # Enhanced State Management
 class LumoState(TypedDict):
-    messages: List[Any]  # Last 20 messages for short-term memory
-    all_chats: List[Dict[str, Any]]  # Full chat history
+    messages: List[Any]
+    all_chats: List[Dict[str, Any]]
     username: str
     user_profile: Dict[str, Any]
     user_timezone: Optional[str]
@@ -311,7 +323,6 @@ class EnhancedLumoAgent:
             return None
     
     def update_user_profile(self, username: str, profile: Dict[str, Any]):
-        """Update user profile in checkpointer state and sync to users collection."""
         try:
             config = {"configurable": {"thread_id": f"enhanced_{username}"}}
             state = self.ai_app.get_state(config).values if self.checkpointer else {}
@@ -340,7 +351,6 @@ class EnhancedLumoAgent:
                 self.ai_app.update_state(config, state)
                 logger.info(f"Updated profile for {username} in checkpointer")
             
-            # Sync to users collection
             self._sync_to_users_collection(state)
             return {"success": True}
         except Exception as e:
@@ -348,7 +358,6 @@ class EnhancedLumoAgent:
             return {"success": False, "error": str(e)}
     
     def _sync_to_users_collection(self, state: LumoState):
-        """Sync checkpointer state to users collection for viewing."""
         try:
             username = state.get("username", "unknown")
             chats = state.get("all_chats", [])
@@ -378,7 +387,6 @@ class EnhancedLumoAgent:
             logger.error(f"Error syncing to users collection: {e}")
     
     def get_user_info(self, username: str) -> Dict[str, Any]:
-        """Retrieve user info from checkpointer."""
         try:
             config = {"configurable": {"thread_id": f"enhanced_{username}"}}
             state = self.ai_app.get_state(config).values if self.checkpointer else {}
@@ -414,22 +422,18 @@ class EnhancedLumoAgent:
             return {"status": "error", "error": str(e)}
     
     def delete_user_data(self, username: str) -> Dict[str, Any]:
-        """Delete user data from checkpointer and users collection."""
         try:
             config = {"configurable": {"thread_id": f"enhanced_{username}"}}
             if self.checkpointer:
-                # Delete checkpoints
                 checkpoints = list(self.ai_app.get_state_history(config))
                 for checkpoint in checkpoints:
                     self.ai_app.delete_state(config)
                 logger.info(f"Deleted checkpoints for {username}")
             
-            # Delete from ChromaDB
             if self.vector_memory and self.vector_memory.collection:
                 self.vector_memory.collection.delete(where={"username": username})
                 logger.info(f"Deleted ChromaDB memories for {username}")
             
-            # Delete from users collection
             users_collection.delete_one({"_id": username})
             logger.info(f"Deleted users collection data for {username}")
             
@@ -528,9 +532,8 @@ class EnhancedLumoAgent:
             
             current_message = state["messages"][-1].content if state["messages"] else ""
             
-            # Retrieve memories from ChromaDB
             if self.vector_memory:
-                relevant_memories = self.vector_memory.retrieve_relevant_memories(current_message, username, n_results=3)
+                relevant_memories = self.vector_memory.retrieve_relevant_memories(current_message, username, n_results=1)
                 if relevant_memories:
                     memory_context = "RELEVANT MEMORIES:\n" + "\n".join([f"[MEMORY]: {mem}" for mem in relevant_memories])
                     state["summary_context"] = memory_context
@@ -582,7 +585,7 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
                 "message_count": end_idx - start_idx + 1
             }
         except Exception as e:
-            logger.error(f"Summary creation error: {e}")
+            logger.error(f"Summary creation error for {username}, range {start_idx}-{end_idx}: {e}", exc_info=True)
             return {
                 "content": f"Error creating summary: {str(e)}",
                 "timestamp": datetime.utcnow().isoformat(),
@@ -603,27 +606,37 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
             }
             updated_state = self._update_timeline_with_summary(temp_state, temp_summary)
             
-            # Store in ChromaDB
             if self.vector_memory and updated_state.get("timeline_memory", {}).get("story"):
                 doc_id = self.vector_memory.store_timeline_memory(
                     username=username,
                     timeline_text=updated_state["timeline_memory"]["story"],
                     metadata={
                         "updated_at": updated_state["timeline_memory"].get("updated_at"),
-                        "total_interactions": updated_state["timeline_memory"].get("total_interactions", end_idx + 1)
+                        "total_interactions": updated_state["timeline_memory"].get("total_interactions")
                     }
                 )
                 if doc_id:
-                    updated_state["vector_memory_metadata"].append({
+                    vector_metadata = updated_state.get("vector_memory_metadata", [])
+                    existing = next((item for item in vector_metadata if item["doc_id"] == doc_id), None)
+                    new_metadata = {
                         "doc_id": doc_id,
                         "timestamp": updated_state["timeline_memory"].get("updated_at"),
                         "range": temp_summary.get("range")
-                    })
+                    }
+                    if existing:
+                        vector_metadata.remove(existing)
+                    vector_metadata.append(new_metadata)
+                    updated_state["vector_memory_metadata"] = vector_metadata
+            
+            if self.checkpointer:
+                config = {"configurable": {"thread_id": f"enhanced_{username}"}}
+                self.ai_app.update_state(config, updated_state)
+            self._sync_to_users_collection(updated_state)
             
             logger.info(f"Background timeline processing complete for {username}")
             return updated_state
         except Exception as e:
-            logger.error(f"Background timeline processing error: {e}")
+            logger.error(f"Background timeline processing error for {username}: {e}", exc_info=True)
             return temp_state
     
     def _update_timeline_with_summary(self, state: LumoState, temp_summary: Dict[str, Any]) -> LumoState:
@@ -669,7 +682,7 @@ Respond with only the updated timeline story."""
             logger.info(f"Timeline memory updated with summary {summary_range} for {username}")
             return state
         except Exception as e:
-            logger.error(f"Timeline update error: {e}")
+            logger.error(f"Timeline update error for {username}: {e}", exc_info=True)
             return state
     
     def _call_llm_with_enhanced_context(self, state: LumoState, interaction_type: str = "general"):
@@ -701,7 +714,7 @@ Respond with only the updated timeline story."""
                 enhanced_prompt += f"\n\nFIRST INTERACTION CONTEXT:\nChild Name: {child_name}\nInterests: {interests}\nTopics to Avoid: {topics_to_avoid}"
             
             conversation_text = ""
-            for msg in messages[-20:]:  # Limit to last 20 messages
+            for msg in messages[-20:]:
                 if hasattr(msg, 'content'):
                     msg_type = "User" if isinstance(msg, HumanMessage) else "Assistant"
                     conversation_text += f"{msg_type}: {msg.content}\n"
@@ -787,11 +800,12 @@ Respond with only the updated timeline story."""
             state["current_mode"] = analysis.get("mode", "general")
             state["current_emotion"] = analysis.get("emotion", "neutral")
             
+            timestamp = datetime.utcnow().isoformat()
+            chat_entry = {"timestamp": timestamp}
+            
             if user_message.strip():
                 state["messages"] = state.get("messages", [])[-19:] + [HumanMessage(content=user_message)]
-                state["all_chats"] = state.get("all_chats", []) + [
-                    {"user_input": user_message, "timestamp": datetime.utcnow().isoformat()}
-                ]
+                chat_entry["user_input"] = user_message
             
             state["interaction_count"] = state.get("interaction_count", 0) + 1
             state["last_updated"] = datetime.utcnow().isoformat()
@@ -799,10 +813,9 @@ Respond with only the updated timeline story."""
             output = self.ai_app.invoke(state, config)
             response_message = output["messages"][-1].content if output.get("messages") else "I'm having trouble responding!"
             
-            state["messages"] = output["messages"][-20:]  # Keep last 20 messages
-            state["all_chats"] = state.get("all_chats", []) + [
-                {"ai_response": response_message, "timestamp": datetime.utcnow().isoformat()}
-            ]
+            state["messages"] = output["messages"][-20:]
+            chat_entry["ai_response"] = response_message
+            state["all_chats"] = state.get("all_chats", []) + [chat_entry]
             
             if self.checkpointer:
                 self.ai_app.update_state(config, state)
@@ -812,19 +825,37 @@ Respond with only the updated timeline story."""
                 start_idx = max(0, state["interaction_count"] - 20)
                 end_idx = state["interaction_count"] - 1
                 range_str = f"{start_idx}-{end_idx}"
-                asyncio.create_task(
-                    self._process_timeline_async(
-                        username=username,
-                        messages=state["messages"],
-                        range_str=range_str,
-                        existing_timeline=state.get("timeline_memory", {})
-                    )
-                )
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        updated_state = asyncio.run_coroutine_threadsafe(
+                            self._process_timeline_async(
+                                username=username,
+                                messages=state["messages"],
+                                range_str=range_str,
+                                existing_timeline=state.get("timeline_memory", {})
+                            ),
+                            loop
+                        ).result()
+                    else:
+                        updated_state = asyncio.run(
+                            self._process_timeline_async(
+                                username=username,
+                                messages=state["messages"],
+                                range_str=range_str,
+                                existing_timeline=state.get("timeline_memory", {})
+                            )
+                        )
+                    state.update(updated_state)
+                    if self.checkpointer:
+                        self.ai_app.update_state(config, state)
+                    self._sync_to_users_collection(state)
+                except Exception as e:
+                    logger.error(f"Error running timeline async task for {username}: {e}", exc_info=True)
             
-            # Sync to users collection
             self._sync_to_users_collection(state)
             
             return response_message
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
+            logger.error(f"Error processing message: {e}", exc_info=True)
             return f"Oops, something went wrong: {str(e)}"
