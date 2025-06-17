@@ -289,7 +289,6 @@ class EnhancedLumoAgent:
             self.ai_app = self.workflow.compile(checkpointer=self.checkpointer)
             logger.info("LangGraph workflow compiled with MongoDB persistence")
         else:
-            self.ai_app = self.workflow.compile()
             logger.warning("LangGraph workflow compiled without persistence")
         
         logger.info("Enhanced Lumo Agent fully initialized")
