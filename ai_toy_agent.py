@@ -15,6 +15,8 @@ import asyncio
 import re
 import chromadb
 from chromadb.utils import embedding_functions
+from cachetools import TTLCache, LRUCache
+from threading import Thread
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -182,16 +184,16 @@ SPECIALIZED BEHAVIOR:
 """
 }
 
-# Vector Memory Management
+# Vector Memory Management with Caching
 class VectorMemoryManager:
     def __init__(self, persist_path=CHROMA_PATH):
         try:
             self.embedding_function = embedding_functions.DefaultEmbeddingFunction()
-            self.client = chromadb.PersistentClient(path=persist_path)
-            self.collection = self.client.get_or_create_collection(
+            self.client = chromadb.Persistent   self.collection = self.client.get_or_create_collection(
                 name="lumo_timeline",
                 embedding_function=self.embedding_function
             )
+            self.memory_cache = TTLCache(maxsize=100, ttl=600)  # 10 minutes TTL
             logger.info(f"ChromaDB initialized at {persist_path}")
         except Exception as e:
             logger.error(f"ChromaDB initialization error: {e}")
@@ -203,8 +205,8 @@ class VectorMemoryManager:
             return None
         
         try:
-            doc_id = username  # Use username as fixed document ID
-            self.collection.upsert(
+            doc_id = f"{username}_{uuid.uuid4()}"
+            self.collection.add(
                 documents=[timeline_text],
                 metadatas=[{
                     "username": username,
@@ -213,36 +215,31 @@ class VectorMemoryManager:
                 }],
                 ids=[doc_id]
             )
-            logger.info(f"Upserted timeline memory for {username} with ID {doc_id}")
+            logger.info(f"Stored timeline memory for {username} with ID {doc_id}")
             return doc_id
         except Exception as e:
             logger.error(f"Error storing timeline memory: {e}")
             return None
     
-    def retrieve_relevant_memories(self, query_text: str, username: str, n_results: int = 1) -> List[str]:
+    def retrieve_relevant_memories(self, query_text: str, username: str, n_results: int = 3) -> List[str]:
         if not self.collection:
             logger.warning("ChromaDB not available, returning empty memories")
             return []
         
+        cache_key = f"{username}_{query_text}"
+        if cache_key in self.memory_cache:
+            logger.info(f"Cache hit for memory retrieval: {cache_key}")
+            return self.memory_cache[cache_key]
+        
         try:
-            # Attempt to get the single document by ID
-            results = self.collection.get(
-                ids=[username],
-                where={"username": username}
-            )
-            memories = results.get("documents", [])
-            if memories:
-                logger.info(f"Retrieved single timeline memory for {username}")
-                return memories
-            
-            # Fallback to query if needed
             results = self.collection.query(
                 query_texts=[query_text],
-                n_results=1,
+                n_results=n_results,
                 where={"username": username}
             )
             memories = results.get("documents", [[]])[0]
-            logger.info(f"Retrieved {len(memories)} relevant memories for {username}")
+            self.memory_cache[cache_key] = memories
+            logger.info(f"Retrieved and cached {len(memories)} memories for {username}")
             return memories
         except Exception as e:
             logger.error(f"Error retrieving memories: {e}")
@@ -250,8 +247,8 @@ class VectorMemoryManager:
 
 # Enhanced State Management
 class LumoState(TypedDict):
-    messages: List[Any]
-    all_chats: List[Dict[str, Any]]
+    messages: List[Any]  # Last 20 messages for short-term memory
+    all_chats: List[Dict[str, Any]]  # Full chat history
     username: str
     user_profile: Dict[str, Any]
     user_timezone: Optional[str]
@@ -278,7 +275,7 @@ class EnhancedLumoAgent:
         self.vector_memory = VectorMemoryManager() if self.llm else None
         
         # Cache for AI analysis
-        self._analysis_cache = {}
+        self.analysis_cache = LRUCache(maxsize=1000)
         
         # Initialize LangGraph checkpointer
         if use_mongodb_checkpointer:
@@ -323,6 +320,7 @@ class EnhancedLumoAgent:
             return None
     
     def update_user_profile(self, username: str, profile: Dict[str, Any]):
+        """Update user profile in checkpointer state and sync to users collection."""
         try:
             config = {"configurable": {"thread_id": f"enhanced_{username}"}}
             state = self.ai_app.get_state(config).values if self.checkpointer else {}
@@ -358,6 +356,7 @@ class EnhancedLumoAgent:
             return {"success": False, "error": str(e)}
     
     def _sync_to_users_collection(self, state: LumoState):
+        """Sync checkpointer state to users collection for viewing."""
         try:
             username = state.get("username", "unknown")
             chats = state.get("all_chats", [])
@@ -387,6 +386,7 @@ class EnhancedLumoAgent:
             logger.error(f"Error syncing to users collection: {e}")
     
     def get_user_info(self, username: str) -> Dict[str, Any]:
+        """Retrieve user info from checkpointer."""
         try:
             config = {"configurable": {"thread_id": f"enhanced_{username}"}}
             state = self.ai_app.get_state(config).values if self.checkpointer else {}
@@ -422,6 +422,7 @@ class EnhancedLumoAgent:
             return {"status": "error", "error": str(e)}
     
     def delete_user_data(self, username: str) -> Dict[str, Any]:
+        """Delete user data from checkpointer and users collection."""
         try:
             config = {"configurable": {"thread_id": f"enhanced_{username}"}}
             if self.checkpointer:
@@ -446,12 +447,14 @@ class EnhancedLumoAgent:
         if not user_message or not user_message.strip():
             return {"mode": "general", "emotion": "neutral", "confidence": 0.3, "reasoning": "Empty message"}
         
-        if user_message in self._analysis_cache:
-            return self._analysis_cache[user_message]
+        normalized_message = user_message.lower().strip()
+        if normalized_message in self.analysis_cache:
+            logger.info(f"Cache hit for analysis: {normalized_message}")
+            return self.analysis_cache[normalized_message]
         
         if not self.llm:
             result = {"mode": "general", "emotion": "neutral", "confidence": 0.5, "reasoning": "LLM not available"}
-            self._analysis_cache[user_message] = result
+            self.analysis_cache[normalized_message] = result
             return result
         
         try:
@@ -461,14 +464,14 @@ class EnhancedLumoAgent:
             if response_content.startswith('{') and response_content.endswith('}'):
                 analysis_result = json.loads(response_content)
                 if all(key in analysis_result for key in ["mode", "emotion"]):
-                    self._analysis_cache[user_message] = analysis_result
-                    logger.info(f"AI Analysis: Mode={analysis_result['mode']}, Emotion={analysis_result['emotion']}")
+                    self.analysis_cache[normalized_message] = analysis_result
+                    logger.info(f"Analyzed and cached: Mode={analysis_result['mode']}, Emotion={analysis_result['emotion']}")
                     return analysis_result
             return self._fallback_analysis(user_message)
         except Exception as e:
             logger.error(f"AI analysis error: {e}")
             result = self._fallback_analysis(user_message)
-            self._analysis_cache[user_message] = result
+            self.analysis_cache[normalized_message] = result
             return result
     
     def _fallback_analysis(self, user_message: str) -> dict:
@@ -533,7 +536,7 @@ class EnhancedLumoAgent:
             current_message = state["messages"][-1].content if state["messages"] else ""
             
             if self.vector_memory:
-                relevant_memories = self.vector_memory.retrieve_relevant_memories(current_message, username, n_results=1)
+                relevant_memories = self.vector_memory.retrieve_relevant_memories(current_message, username, n_results=3)
                 if relevant_memories:
                     memory_context = "RELEVANT MEMORIES:\n" + "\n".join([f"[MEMORY]: {mem}" for mem in relevant_memories])
                     state["summary_context"] = memory_context
@@ -593,7 +596,8 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
                 "type": "error_summary"
             }
     
-    async def _process_timeline_async(self, username: str, messages: List[Any], range_str: str, existing_timeline: Dict[str, Any]):
+    def _process_timeline(self, username: str, messages: List[Any], range_str: str, existing_timeline: Dict[str, Any]):
+        """Process timeline and summary generation in a background thread."""
         try:
             logger.info(f"Processing timeline in background for {username}")
             start_idx, end_idx = map(int, range_str.split('-'))
@@ -617,14 +621,11 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
                 )
                 if doc_id:
                     vector_metadata = updated_state.get("vector_memory_metadata", [])
-                    existing = next((item for item in vector_metadata if item["doc_id"] == doc_id), None)
                     new_metadata = {
                         "doc_id": doc_id,
                         "timestamp": updated_state["timeline_memory"].get("updated_at"),
                         "range": temp_summary.get("range")
                     }
-                    if existing:
-                        vector_metadata.remove(existing)
                     vector_metadata.append(new_metadata)
                     updated_state["vector_memory_metadata"] = vector_metadata
             
@@ -634,10 +635,8 @@ Format as a comprehensive memory summary for interactions {start_idx}-{end_idx}.
             self._sync_to_users_collection(updated_state)
             
             logger.info(f"Background timeline processing complete for {username}")
-            return updated_state
         except Exception as e:
             logger.error(f"Background timeline processing error for {username}: {e}", exc_info=True)
-            return temp_state
     
     def _update_timeline_with_summary(self, state: LumoState, temp_summary: Dict[str, Any]) -> LumoState:
         try:
@@ -820,38 +819,14 @@ Respond with only the updated timeline story."""
             if self.checkpointer:
                 self.ai_app.update_state(config, state)
             
-            # Generate summary every 20 interactions
+            # Offload summary generation to a background thread every 20 interactions
             if state["interaction_count"] % 20 == 0:
                 start_idx = max(0, state["interaction_count"] - 20)
                 end_idx = state["interaction_count"] - 1
                 range_str = f"{start_idx}-{end_idx}"
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        updated_state = asyncio.run_coroutine_threadsafe(
-                            self._process_timeline_async(
-                                username=username,
-                                messages=state["messages"],
-                                range_str=range_str,
-                                existing_timeline=state.get("timeline_memory", {})
-                            ),
-                            loop
-                        ).result()
-                    else:
-                        updated_state = asyncio.run(
-                            self._process_timeline_async(
-                                username=username,
-                                messages=state["messages"],
-                                range_str=range_str,
-                                existing_timeline=state.get("timeline_memory", {})
-                            )
-                        )
-                    state.update(updated_state)
-                    if self.checkpointer:
-                        self.ai_app.update_state(config, state)
-                    self._sync_to_users_collection(state)
-                except Exception as e:
-                    logger.error(f"Error running timeline async task for {username}: {e}", exc_info=True)
+                thread = Thread(target=self._process_timeline, args=(username, state["messages"], range_str, state.get("timeline_memory", {})))
+                thread.start()
+                logger.info(f"Started background thread for summary generation for {username}")
             
             self._sync_to_users_collection(state)
             
