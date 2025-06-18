@@ -1,3 +1,4 @@
+
 import pysqlite3
 import sys
 sys.modules['sqlite3'] = pysqlite3
@@ -18,6 +19,7 @@ from chromadb.utils import embedding_functions
 from cachetools import TTLCache, LRUCache
 from threading import Thread
 import tempfile
+import time
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -96,14 +98,7 @@ SPECIALIZED MODES:
 CHAT_FOUNDATION_PROMPT = ""
 
 INTENT_ANALYSIS_PROMPT = """
-You are an expert at analyzing children's messages to understand what type of specialized activity they want.
-
-SPECIALIZED ACTIVITY MODES (all build on shared chat foundation):
-- "game": Wants to play games, have fun, interactive activities
-- "story": Wants to hear stories, narratives, creative tales  
-- "learning": Wants to learn something, asking how/why/what questions, educational content
-
-If none of these specialized activities are requested, default to "general" for general conversation.
+You are an expert at analyzing children's messages to understand their emotional state.
 
 EMOTIONAL STATES:
 - "happy": Joyful, positive, in good spirits
@@ -117,23 +112,10 @@ EMOTIONAL STATES:
 
 RESPONSE FORMAT (respond with EXACTLY this JSON format):
 {
-    "mode": "general|game|story|learning",
     "emotion": "happy|sad|excited|curious|confused|tired|frustrated|neutral",
     "confidence": 0.8,
-    "reasoning": "Brief explanation of why you chose this mode and emotion"
+    "reasoning": "Brief explanation of why you chose this emotion"
 }
-
-EXAMPLES:
-User: "I'm bored, what should we do?"
-Response: {"mode": "game", "emotion": "neutral", "confidence": 0.9, "reasoning": "User is seeking activity suggestions, indicating they want interactive engagement"}
-
-User: "Tell me about how rockets work!"
-Response: {"mode": "learning", "emotion": "curious", "confidence": 0.95, "reasoning": "Direct question about how something works shows learning intent and curiosity"}
-
-User: "I had a bad day at school today"
-Response: {"mode": "general", "emotion": "sad", "confidence": 0.85, "reasoning": "Sharing personal experience with negative emotion, needs supportive conversation"}
-
-Now analyze this message:
 """
 
 MODE_SPECIFIC_PROMPTS = {
@@ -207,7 +189,7 @@ class VectorMemoryManager:
                 name="lumo_timeline",
                 embedding_function=self.embedding_function
             )
-            self.memory_cache = TTLCache(maxsize=100, ttl=600)  # 10 minutes TTL
+            self.memory_cache = TTLCache(maxsize=1000, ttl=600)  # Increased cache size
             logger.info(f"ChromaDB initialized at {persist_path}")
         except Exception as e:
             logger.error(f"ChromaDB initialization error: {e}", exc_info=True)
@@ -288,8 +270,8 @@ class EnhancedLumoAgent:
         self.llm = self._initialize_llm()
         self.vector_memory = VectorMemoryManager() if self.llm else None
         
-        # Cache for AI analysis
-        self.analysis_cache = LRUCache(maxsize=1000)
+        # Cache for analysis
+        self.analysis_cache = LRUCache(maxsize=10000)  # Increased cache size
         
         # Initialize LangGraph checkpointer
         if use_mongodb_checkpointer:
@@ -462,8 +444,16 @@ class EnhancedLumoAgent:
             logger.info(f"Cache hit for analysis: {normalized_message}")
             return self.analysis_cache[normalized_message]
         
+        # Determine mode using keyword-based logic
+        mode = self._detect_mode(user_message)
+        
         if not self.llm:
-            result = {"mode": "general", "emotion": "neutral", "confidence": 0.5, "reasoning": "LLM not available"}
+            result = {
+                "mode": mode,
+                "emotion": "neutral",
+                "confidence": 0.5,
+                "reasoning": "LLM not available, using keyword-based mode detection"
+            }
             self.analysis_cache[normalized_message] = result
             return result
         
@@ -473,28 +463,39 @@ class EnhancedLumoAgent:
             response_content = response.content.strip()
             if response_content.startswith('{') and response_content.endswith('}'):
                 analysis_result = json.loads(response_content)
-                if all(key in analysis_result for key in ["mode", "emotion"]):
-                    self.analysis_cache[normalized_message] = analysis_result
-                    logger.info(f"Analyzed and cached: Mode={analysis_result['mode']}, Emotion={analysis_result['emotion']}")
-                    return analysis_result
+                if "emotion" in analysis_result:
+                    result = {
+                        "mode": mode,
+                        "emotion": analysis_result["emotion"],
+                        "confidence": analysis_result.get("confidence", 0.8),
+                        "reasoning": analysis_result.get("reasoning", "LLM-based emotion analysis")
+                    }
+                    self.analysis_cache[normalized_message] = result
+                    logger.info(f"Analyzed and cached: Mode={result['mode']}, Emotion={result['emotion']}")
+                    return result
             return self._fallback_analysis(user_message)
         except Exception as e:
-            logger.error(f"AI analysis error: {e}")
+            logger.error(f"Emotion analysis error: {e}")
             result = self._fallback_analysis(user_message)
             self.analysis_cache[normalized_message] = result
             return result
     
+    def _detect_mode(self, user_message: str) -> str:
+        user_lower = user_message.lower().strip()
+        if re.search(r"\b(play|game|fun|bored)\b", user_lower):
+            return "game"
+        elif re.search(r"\b(story|stories|tell|read)\b", user_lower):
+            return "story"
+        elif re.search(r"\b(learn|how|why|what|explain)\b", user_lower):
+            return "learning"
+        elif re.search(r"\b(yes|yeah|sure)\b", user_lower) and len(self.ai_app.get_state({"configurable": {"thread_id": f"enhanced_{self.username}"}}).values.get("messages", [])) == 1:
+            return "activities"
+        return "general"
+    
     def _fallback_analysis(self, user_message: str) -> dict:
         user_lower = user_message.lower()
-        mode = "general"
+        mode = self._detect_mode(user_message)
         emotion = "neutral"
-        
-        if any(word in user_lower for word in ["play", "game", "fun", "bored"]):
-            mode = "game"
-        elif any(word in user_lower for word in ["story", "tell", "read"]):
-            mode = "story"
-        elif any(word in user_lower for word in ["learn", "how", "why", "what", "explain"]):
-            mode = "learning"
         
         if any(word in user_lower for word in ["sad", "upset", "bad", "terrible"]):
             emotion = "sad"
@@ -511,31 +512,6 @@ class EnhancedLumoAgent:
             "confidence": 0.6, 
             "reasoning": "Fallback keyword analysis"
         }
-    
-    def _router(self, state: LumoState) -> str:
-        try:
-            if not state.get("messages") or len(state["messages"]) == 0:
-                return "general"
-            
-            last_message = state["messages"][-1].content.lower()
-            
-            if len(state["messages"]) == 1:
-                if "yes" in last_message or "yeah" in last_message or "sure" in last_message:
-                    return "activities"
-                elif "no" in last_message or "nope" in last_message:
-                    return "general"
-            
-            if "stories" in last_message or "story" in last_message:
-                return "story"
-            elif "games" in last_message or "game" in last_message or "play" in last_message:
-                return "game"
-            elif "learn" in last_message or "how" in last_message or "why" in last_message or "what" in last_message:
-                return "learning"
-            
-            return "general"
-        except Exception as e:
-            logger.error(f"Router error: {e}")
-            return "general"
     
     def _enhance_state_with_memory(self, state: LumoState) -> LumoState:
         try:
@@ -689,7 +665,9 @@ Respond with only the updated timeline story."""
                 "last_summary_processed": current_time.isoformat()
             }
             
-            state["summaries"] = state.get("summaries", []) + [temp_summary]
+           
+
+ state["summaries"] = state.get("summaries", []) + [temp_summary]
             logger.info(f"Timeline memory updated with summary {summary_range} for {username}")
             return state
         except Exception as e:
@@ -697,13 +675,13 @@ Respond with only the updated timeline story."""
             return state
     
     def _call_llm_with_enhanced_context(self, state: LumoState, interaction_type: str = "general"):
+        start_time = time.time()
         try:
             if not self.llm:
-                return {"messages": state["messages"] + [AIMessage(content="I'm having trouble thinking right now!")]}
-        
+                return {"messages": state["messages"] + [AIMessage(content="I'm having trouble thinking right now!")], "emotion": "neutral"}
+            
             messages = state.get("messages", [])
             username = state.get("username", "unknown")
-            emotion = state.get("current_emotion", "neutral")
             summary_context = state.get("summary_context", "")
             profile = state.get("user_profile", {})
             
@@ -713,7 +691,7 @@ Respond with only the updated timeline story."""
             timezone = state.get("user_timezone", "UTC")
             temporally_aware_prompt = self._add_temporal_context_to_prompt(base_prompt, timezone)
             
-            enhanced_prompt = f"{temporally_aware_prompt}\n\nEMOTION: {emotion}"
+            enhanced_prompt = temporally_aware_prompt
             if summary_context:
                 enhanced_prompt = f"{enhanced_prompt}\n\n{summary_context}"
                 logger.info(f"Using enhanced timeline memory context for {username}")
@@ -725,25 +703,75 @@ Respond with only the updated timeline story."""
                 enhanced_prompt += f"\n\nFIRST INTERACTION CONTEXT:\nChild Name: {child_name}\nInterests: {interests}\nTopics to Avoid: {topics_to_avoid}"
             
             conversation_text = ""
-            for msg in messages[-20:]:
+            for msg in messages[-10:]:  # Reduced to 10 messages
                 if hasattr(msg, 'content'):
                     msg_type = "User" if isinstance(msg, HumanMessage) else "Assistant"
                     conversation_text += f"{msg_type}: {msg.content}\n"
             
-            full_prompt = f"{enhanced_prompt}\n\nConversation:\n{conversation_text}\n\nAssistant:"
+            analysis_prompt = f"""
+EMOTIONAL STATES:
+- "happy": Joyful, positive, in good spirits
+- "sad": Upset, down, disappointed, hurt feelings
+- "excited": Very enthusiastic, energetic, thrilled
+- "curious": Wondering, asking questions, wanting to explore
+- "confused": Not understanding, puzzled, need clarification
+- "tired": Sleepy, low energy, want calm activities
+- "frustrated": Annoyed, having trouble with something
+- "neutral": Normal, calm, no strong emotions
+
+RESPONSE FORMAT (respond with EXACTLY this JSON format):
+{{
+    "emotion": "happy|sad|excited|curious|confused|tired|frustrated|neutral",
+    "confidence": 0.8,
+    "reasoning": "Brief explanation of why you chose this emotion",
+    "response": "Your conversational response here"
+}}
+"""
+            full_prompt = f"{enhanced_prompt}\n\n{analysis_prompt}\n\nConversation:\n{conversation_text}\n\nAssistant:"
             
+            llm_start_time = time.time()
             response = self.llm.invoke(full_prompt)
+            logger.info(f"LLM call took {time.time() - llm_start_time:.3f} seconds")
+            
             ai_content = response.content if hasattr(response, 'content') else str(response)
             
-            return {"messages": messages + [AIMessage(content=ai_content)]}
+            # Parse JSON response
+            try:
+                result = json.loads(ai_content)
+                if "emotion" in result and "response" in result:
+                    logger.info(f"LLM response parsed successfully: Emotion={result['emotion']}")
+                    return {
+                        "messages": messages + [AIMessage(content=result["response"])],
+                        "emotion": result["emotion"],
+                        "emotion_confidence": result.get("confidence", 0.8),
+                        "emotion_reasoning": result.get("reasoning", "LLM-based emotion analysis")
+                    }
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse LLM response as JSON: {ai_content}")
+                # Fallback to keyword-based emotion detection
+                fallback = self._fallback_analysis(messages[-1].content if messages else "")
+                return {
+                    "messages": messages + [AIMessage(content=ai_content)],
+                    "emotion": fallback["emotion"],
+                    "emotion_confidence": fallback["confidence"],
+                    "emotion_reasoning": fallback["reasoning"]
+                }
         except Exception as e:
             logger.error(f"Error in _call_llm_with_enhanced_context: {e}")
-            return {"messages": messages + [AIMessage(content="I'm having trouble thinking right now!")]}
-
+            fallback = self._fallback_analysis(messages[-1].content if messages else "")
+            return {
+                "messages": messages + [AIMessage(content="I'm having trouble thinking right now!")],
+                "emotion": fallback["emotion"],
+                "emotion_confidence": fallback["confidence"],
+                "emotion_reasoning": fallback["reasoning"]
+            }
+        finally:
+            logger.info(f"_call_llm_with_enhanced_context took {time.time() - start_time:.3f} seconds")
+    
     def _setup_enhanced_graph(self):
         def enhance_and_route(state: LumoState) -> str:
             enhanced_state = self._enhance_state_with_memory(state)
-            return self._router(enhanced_state)
+            return enhanced_state.get("current_mode", "general")
         
         self.workflow.add_node("general", lambda state: self._call_llm_with_enhanced_context(state, "general"))
         self.workflow.add_node("activities", lambda state: self._call_llm_with_enhanced_context(state, "activities"))
@@ -783,6 +811,7 @@ Respond with only the updated timeline story."""
             return base_prompt
     
     def process_message(self, user_message: str, username: str) -> str:
+        start_time = time.time()
         try:
             if not self.llm:
                 return "I'm having trouble thinking right now!"
@@ -807,9 +836,9 @@ Respond with only the updated timeline story."""
                     "user_timezone": "UTC"
                 }
             
-            analysis = self._ai_analyze_intent_and_emotion(user_message)
-            state["current_mode"] = analysis.get("mode", "general")
-            state["current_emotion"] = analysis.get("emotion", "neutral")
+            # Detect mode using keyword-based logic
+            mode = self._detect_mode(user_message)
+            state["current_mode"] = mode
             
             timestamp = datetime.now(UTC).isoformat()
             chat_entry = {"timestamp": timestamp}
@@ -821,8 +850,14 @@ Respond with only the updated timeline story."""
             state["interaction_count"] = state.get("interaction_count", 0) + 1
             state["last_updated"] = datetime.now(UTC).isoformat()
             
+            # Pass the detected mode to LangGraph
+            state["current_mode"] = mode
+            invoke_start_time = time.time()
             output = self.ai_app.invoke(state, config)
+            logger.info(f"LangGraph invoke took {time.time() - invoke_start_time:.3f} seconds")
+            
             response_message = output["messages"][-1].content if output.get("messages") else "I'm having trouble responding!"
+            state["current_emotion"] = output.get("emotion", "neutral")
             
             state["messages"] = output["messages"][-20:]
             chat_entry["ai_response"] = response_message
@@ -830,6 +865,15 @@ Respond with only the updated timeline story."""
             
             if self.checkpointer:
                 self.ai_app.update_state(config, state)
+            
+            # Cache emotion analysis
+            normalized_message = user_message.lower().strip()
+            self.analysis_cache[normalized_message] = {
+                "mode": mode,
+                "emotion": state["current_emotion"],
+                "confidence": output.get("emotion_confidence", 0.8),
+                "reasoning": output.get("emotion_reasoning", "LLM-based emotion analysis")
+            }
             
             # Offload summary generation to a background thread every 20 interactions
             if state["interaction_count"] % 20 == 0:
@@ -842,6 +886,7 @@ Respond with only the updated timeline story."""
             
             self._sync_to_users_collection(state)
             
+            logger.info(f"process_message took {time.time() - start_time:.3f} seconds")
             return response_message
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
