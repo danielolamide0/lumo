@@ -17,6 +17,7 @@ import chromadb
 from chromadb.utils import embedding_functions
 from cachetools import TTLCache, LRUCache
 from threading import Thread
+import tempfile
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +38,7 @@ MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-flash-preview-04-17")
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
 MONGODB_URI = os.getenv("MONGODB_URI")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "LUMO")
-CHROMA_PATH = "./chroma_lumo_timeline"
+CHROMA_PATH = os.path.join(tempfile.gettempdir(), "chroma_lumo_timeline")
 
 # Test MongoDB connection
 try:
@@ -188,8 +189,20 @@ SPECIALIZED BEHAVIOR:
 class VectorMemoryManager:
     def __init__(self, persist_path=CHROMA_PATH):
         try:
+            # Disable server-related environment variables
+            os.environ.pop("CHROMA_SERVER_HOST", None)
+            os.environ.pop("CHROMA_SERVER_PORT", None)
+            os.environ.pop("CHROMA_SERVER_AUTHN_CREDENTIALS", None)
+
+            # Ensure the persist_path directory exists
+            os.makedirs(persist_path, exist_ok=True)
+            logger.info(f"ChromaDB persist path: {os.path.abspath(persist_path)}")
+            logger.info(f"ChromaDB directory contents: {os.listdir(persist_path) if os.path.exists(persist_path) else 'Directory not yet created'}")
+
             self.embedding_function = embedding_functions.DefaultEmbeddingFunction()
             self.client = chromadb.PersistentClient(path=persist_path)
+            logger.info(f"ChromaDB client type: {type(self.client).__name__}")
+
             self.collection = self.client.get_or_create_collection(
                 name="lumo_timeline",
                 embedding_function=self.embedding_function
@@ -197,7 +210,7 @@ class VectorMemoryManager:
             self.memory_cache = TTLCache(maxsize=100, ttl=600)  # 10 minutes TTL
             logger.info(f"ChromaDB initialized at {persist_path}")
         except Exception as e:
-            logger.error(f"ChromaDB initialization error: {e}")
+            logger.error(f"ChromaDB initialization error: {e}", exc_info=True)
             self.collection = None
     
     def store_timeline_memory(self, username: str, timeline_text: str, metadata: Dict[str, Any]):
